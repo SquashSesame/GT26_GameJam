@@ -131,6 +131,7 @@ class PlayingState extends BaseState {
 
     this.game.updatePlayerBullets(dt);
     this.game.updateEnemyBullets(dt);
+    this.game.updatePowerUps(dt);
     this.game.updateEnemies(dt);
     this.game.updateBoss(dt);
     this.game.updateParticles(dt);
@@ -335,6 +336,8 @@ class GameEngine {
     this.shotCooldown = 0;
     this.lastFrame = performance.now();
     this.stageState = 'wave';
+    this.weaponLevel = 0;
+    this.powerUps = [];
 
     this.stateMachine = new GameStateMachine(this);
     this.currentState = null;
@@ -364,6 +367,8 @@ class GameEngine {
     this.particles = [];
     this.shotCooldown = 0;
     this.stageState = 'wave';
+    this.weaponLevel = 0;
+    this.powerUps = [];
     this.player.transitionTo('normal');
     this.updateHud();
   }
@@ -393,6 +398,7 @@ class GameEngine {
     this.boss = null;
     this.particles = [];
     this.shotCooldown = 0;
+    this.powerUps = [];
     this.updateHud();
     this.spawnWave();
   }
@@ -447,21 +453,55 @@ class GameEngine {
     }
   }
 
+  spawnPowerUp(x, y) {
+    const spawnY = -24 - Math.random() * 60;
+    const spawnX = Math.max(24, Math.min(this.canvas.width - 24, x));
+    this.powerUps.push({
+      x: spawnX,
+      y: spawnY,
+      width: 16,
+      height: 16,
+      vy: 120 + Math.random() * 40,
+      vx: (Math.random() - 0.5) * 30,
+      kind: ['two', 'three', 'five'][Math.floor(Math.random() * 3)]
+    });
+  }
+
   fireBullet() {
     if (this.stateMachine.currentState !== this.stateMachine.states.playing) return;
-    this.playerBullets.push({
-      x: this.player.x,
-      y: this.player.y - 10,
-      width: 6,
-      height: 16,
-      vy: -560
+
+    const patterns = {
+      0: [[0]],
+      1: [[-0.28, -1], [0.28, -1]],
+      2: [[-0.45, -1], [0, -1], [0.45, -1]],
+      3: [
+        [-0.7, -1],
+        [-0.28, -1],
+        [0, -1],
+        [0.28, 1],
+        [0.7, 1]
+      ]
+    };
+    const pattern = patterns[Math.min(this.weaponLevel, 3)] || patterns[3];
+
+    pattern.forEach(([dx, dy = -1]) => {
+      const bullet = {
+        x: this.player.x,
+        y: this.player.y - 10,
+        width: 6,
+        height: 16,
+        vx: (dx || 0) * 180,
+        vy: 560 * (dy || 1)
+      };
+      this.playerBullets.push(bullet);
     });
   }
 
   updatePlayerBullets(dt) {
     this.playerBullets = this.playerBullets.filter((bullet) => {
+      bullet.x += bullet.vx * dt;
       bullet.y += bullet.vy * dt;
-      return bullet.y > -20 && bullet.y < this.canvas.height + 20;
+      return bullet.y > -20 && bullet.y < this.canvas.height + 20 && bullet.x > -20 && bullet.x < this.canvas.width + 20;
     });
   }
 
@@ -469,6 +509,32 @@ class GameEngine {
     this.enemyBullets = this.enemyBullets.filter((bullet) => {
       bullet.y += bullet.vy * dt;
       return bullet.y > -20 && bullet.y < this.canvas.height + 20;
+    });
+  }
+
+  updatePowerUps(dt) {
+    this.powerUps = this.powerUps.filter((item) => {
+      item.x += item.vx * dt;
+      item.y += item.vy * dt;
+      item.vx *= 0.98;
+      if (item.y > this.canvas.height + 20) {
+        return false;
+      }
+
+      const playerRect = {
+        x: this.player.x - this.player.width / 2,
+        y: this.player.y - this.player.height / 2,
+        width: this.player.width,
+        height: this.player.height
+      };
+
+      if (item.x < playerRect.x + playerRect.width && item.x + item.width > playerRect.x && item.y < playerRect.y + playerRect.height && item.y + item.height > playerRect.y) {
+        this.weaponLevel = Math.min(this.weaponLevel + 1, 3);
+        this.createParticles(this.player.x, this.player.y, '#7dff9a');
+        return false;
+      }
+
+      return true;
     });
   }
 
@@ -495,6 +561,9 @@ class GameEngine {
           if (enemy.hp <= 0) {
             this.score += 100;
             this.createParticles(enemy.x, enemy.y, '#ff6b6b');
+            if (Math.random() < 0.22) {
+              this.spawnPowerUp(enemy.x, enemy.y);
+            }
             this.updateHud();
             return false;
           }
@@ -647,6 +716,13 @@ class GameEngine {
     }
   }
 
+  drawPowerUps() {
+    for (const item of this.powerUps) {
+      this.ctx.fillStyle = item.kind === 'two' ? '#7dff9a' : item.kind === 'three' ? '#5cf2ff' : '#ffd166';
+      this.ctx.fillRect(item.x - item.width / 2, item.y - item.height / 2, item.width, item.height);
+    }
+  }
+
   drawEnemyBullets() {
     this.ctx.fillStyle = '#ff9f1c';
     for (const bullet of this.enemyBullets) {
@@ -687,6 +763,7 @@ class GameEngine {
 
     this.drawBackground(dt);
     this.drawParticles();
+    this.drawPowerUps();
     this.drawEnemies();
     this.drawBoss();
     this.drawEnemyBullets();
