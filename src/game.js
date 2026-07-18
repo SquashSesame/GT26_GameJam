@@ -24,8 +24,9 @@ class BaseState {
 }
 
 class PlayerState {
-  constructor(player) {
+  constructor(player, stateMachine) {
     this.player = player;
+    this.stateMachine = stateMachine;
   }
 
   enter() {}
@@ -40,8 +41,8 @@ class PlayerNormalState extends PlayerState {
 }
 
 class PlayerInvulnerableState extends PlayerState {
-  constructor(player, duration = 1.2) {
-    super(player);
+  constructor(player, stateMachine, duration = 1.2) {
+    super(player, stateMachine);
     this.duration = duration;
     this.elapsed = 0;
   }
@@ -59,7 +60,35 @@ class PlayerInvulnerableState extends PlayerState {
     this.player.applyMovement(dt);
     this.elapsed += dt;
     if (this.elapsed >= this.duration) {
-      this.player.transitionTo('normal');
+      this.stateMachine.transitionTo('normal');
+    }
+  }
+}
+
+class PlayerStateMachine {
+  constructor(player) {
+    this.player = player;
+    this.states = {
+      normal: new PlayerNormalState(player, this),
+      invulnerable: new PlayerInvulnerableState(player, this)
+    };
+    this.currentState = null;
+  }
+
+  transitionTo(stateName) {
+    if (this.currentState && this.currentState.exit) {
+      this.currentState.exit();
+    }
+
+    this.currentState = this.states[stateName] || this.states.normal;
+    if (this.currentState && this.currentState.enter) {
+      this.currentState.enter();
+    }
+  }
+
+  update(dt) {
+    if (this.currentState && this.currentState.update) {
+      this.currentState.update(dt);
     }
   }
 }
@@ -174,6 +203,61 @@ class GameClearState extends BaseState {
   }
 }
 
+class GameStateMachine {
+  constructor(game) {
+    this.game = game;
+    this.states = {
+      title: new TitleState(game),
+      playing: new PlayingState(game),
+      gameover: new GameOverState(game),
+      stageClear: new StageClearState(game),
+      gameclear: new GameClearState(game)
+    };
+    this.currentState = null;
+  }
+
+  transitionTo(stateName, options = {}) {
+    if (this.currentState && this.currentState.exit) {
+      this.currentState.exit();
+    }
+
+    this.currentState = this.states[stateName];
+    if (this.currentState && this.currentState.enter) {
+      this.currentState.enter(options);
+    }
+  }
+
+  update(dt) {
+    if (this.currentState && this.currentState.update) {
+      this.currentState.update(dt);
+    }
+  }
+
+  handleKeyDown(event) {
+    if (this.currentState && this.currentState.handleKeyDown) {
+      this.currentState.handleKeyDown(event);
+    }
+  }
+
+  handleKeyUp(event) {
+    if (this.currentState && this.currentState.handleKeyUp) {
+      this.currentState.handleKeyUp(event);
+    }
+  }
+
+  handleMouseMove(event) {
+    if (this.currentState && this.currentState.handleMouseMove) {
+      this.currentState.handleMouseMove(event);
+    }
+  }
+
+  handleClick() {
+    if (this.currentState && this.currentState.handleClick) {
+      this.currentState.handleClick();
+    }
+  }
+}
+
 class GameEngine {
   constructor() {
     const game = this;
@@ -199,21 +283,9 @@ class GameEngine {
       height: 34,
       speed: 280,
       invulnerable: false,
-      state: null,
+      stateMachine: null,
       transitionTo: (stateName) => {
-        if (player.state && player.state.exit) {
-          player.state.exit();
-        }
-
-        if (stateName === 'invulnerable') {
-          player.state = new PlayerInvulnerableState(player);
-        } else {
-          player.state = new PlayerNormalState(player);
-        }
-
-        if (player.state && player.state.enter) {
-          player.state.enter();
-        }
+        player.stateMachine.transitionTo(stateName);
       },
       applyMovement: (dt) => {
         let dx = 0;
@@ -243,13 +315,13 @@ class GameEngine {
         player.y = Math.max(20, Math.min(game.canvas.height - 20, player.y));
       },
       update: (dt) => {
-        if (player.state && player.state.update) {
-          player.state.update(dt);
-        }
+        player.stateMachine.update(dt);
       }
     };
 
     const player = this.player;
+    this.playerStateMachine = new PlayerStateMachine(player);
+    player.stateMachine = this.playerStateMachine;
 
     this.playerBullets = [];
     this.enemyBullets = [];
@@ -260,20 +332,13 @@ class GameEngine {
     this.lastFrame = performance.now();
     this.stageState = 'wave';
 
-    this.states = {
-      title: new TitleState(this),
-      playing: new PlayingState(this),
-      gameover: new GameOverState(this),
-      stageClear: new StageClearState(this),
-      gameclear: new GameClearState(this)
-    };
-
+    this.stateMachine = new GameStateMachine(this);
     this.currentState = null;
   }
 
   init() {
-    this.player.transitionTo('normal');
-    this.transitionTo('title');
+    this.playerStateMachine.transitionTo('normal');
+    this.stateMachine.transitionTo('title');
     this.updateHud();
     requestAnimationFrame((now) => this.gameLoop(now));
   }
@@ -386,7 +451,7 @@ class GameEngine {
   }
 
   fireBullet() {
-    if (this.currentState !== this.states.playing) return;
+    if (this.stateMachine.currentState !== this.stateMachine.states.playing) return;
     this.playerBullets.push({
       x: this.player.x,
       y: this.player.y - 10,
@@ -442,7 +507,7 @@ class GameEngine {
       return true;
     });
 
-    if (this.enemies.length === 0 && this.boss === null && this.currentState === this.states.playing && this.stageState === 'wave') {
+    if (this.enemies.length === 0 && this.boss === null && this.stateMachine.currentState === this.stateMachine.states.playing && this.stageState === 'wave') {
       this.stageState = 'boss';
       this.showOverlay(`Stage ${this.stage}`, 'Boss incoming!');
       setTimeout(() => {
@@ -602,9 +667,7 @@ class GameEngine {
     const dt = Math.min(0.033, (now - this.lastFrame) / 1000);
     this.lastFrame = now;
 
-    if (this.currentState === this.states.playing) {
-      this.currentState.update(dt);
-    }
+    this.stateMachine.update(dt);
 
     this.drawBackground();
     this.drawParticles();
@@ -619,16 +682,12 @@ class GameEngine {
 
   handleKeyDown(event) {
     this.keys[event.key] = true;
-    if (this.currentState && this.currentState.handleKeyDown) {
-      this.currentState.handleKeyDown(event);
-    }
+    this.stateMachine.handleKeyDown(event);
   }
 
   handleKeyUp(event) {
     this.keys[event.key] = false;
-    if (this.currentState && this.currentState.handleKeyUp) {
-      this.currentState.handleKeyUp(event);
-    }
+    this.stateMachine.handleKeyUp(event);
   }
 
   handleMouseMove(event) {
@@ -638,9 +697,7 @@ class GameEngine {
   }
 
   handleClick() {
-    if (this.currentState && this.currentState.handleClick) {
-      this.currentState.handleClick();
-    }
+    this.stateMachine.handleClick();
   }
 }
 
