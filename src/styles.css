@@ -9,6 +9,7 @@
 
 body {
   margin: 0;
+  overflow: hidden;
   background: linear-gradient(180deg, #02040d 0%, #0b1024 100%);
   color: #e6f6ff;
   display: flex;
@@ -20,7 +21,9 @@ body {
 .game-shell {
   position: relative;
   width: min(100vw, 1100px);
+  max-height: 100vh;
   padding: 20px;
+  overflow: hidden;
 }
 
 .hud {
@@ -40,6 +43,7 @@ canvas {
   display: block;
   width: 100%;
   height: auto;
+  max-height: calc(100vh - 140px);
   border: 1px solid rgba(255,255,255,0.12);
   border-radius: 18px;
   background: #050816;

@@ -272,6 +272,10 @@ class GameEngine {
     this.restartButton = restartButton;
     this.keys = {};
     this.mouse = { x: canvas.width / 2, y: canvas.height - 120 };
+    this.backgroundImage = new Image();
+    this.backgroundImage.src = '../res/img/street.png';
+    this.backgroundScrollV = 0;
+    this.backgroundScrollSpeed = 90;
     this.score = 0;
     this.stage = 1;
     this.playerHp = 100;
@@ -344,14 +348,7 @@ class GameEngine {
   }
 
   transitionTo(stateName, options = {}) {
-    if (this.currentState && this.currentState.exit) {
-      this.currentState.exit();
-    }
-
-    this.currentState = this.states[stateName];
-    if (this.currentState && this.currentState.enter) {
-      this.currentState.enter(options);
-    }
+    this.stateMachine.transitionTo(stateName, options);
   }
 
   resetGame() {
@@ -589,13 +586,32 @@ class GameEngine {
     }
   }
 
-  drawBackground() {
+  drawBackground(dt) {
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     const gradient = this.ctx.createLinearGradient(0, 0, 0, this.canvas.height);
     gradient.addColorStop(0, '#02040d');
     gradient.addColorStop(1, '#0b1024');
     this.ctx.fillStyle = gradient;
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+    if (this.backgroundImage.complete && this.backgroundImage.naturalWidth) {
+      const img = this.backgroundImage;
+      const imageHeight = img.naturalHeight || img.height || this.canvas.height;
+      const imageWidth = img.naturalWidth || img.width || this.canvas.width;
+      this.backgroundScrollV = (this.backgroundScrollV + dt * this.backgroundScrollSpeed + imageHeight) % imageHeight;
+
+      this.ctx.save();
+      this.ctx.imageSmoothingEnabled = false;
+      this.ctx.translate(0, this.backgroundScrollV);
+
+      const tileCount = Math.ceil(this.canvas.height / imageHeight) + 3;
+      for (let i = 0; i < tileCount; i += 1) {
+        const y = i * imageHeight - imageHeight;
+        this.ctx.drawImage(img, 0, 0, imageWidth, imageHeight, 0, y, this.canvas.width, imageHeight);
+      }
+      this.ctx.restore();
+      return;
+    }
 
     this.ctx.fillStyle = 'rgba(255,255,255,0.08)';
     for (let i = 0; i < 60; i += 1) {
@@ -669,7 +685,7 @@ class GameEngine {
 
     this.stateMachine.update(dt);
 
-    this.drawBackground();
+    this.drawBackground(dt);
     this.drawParticles();
     this.drawEnemies();
     this.drawBoss();
@@ -709,5 +725,13 @@ canvas.addEventListener('mouseleave', () => {
   game.mouse.x = canvas.width / 2;
   game.mouse.y = canvas.height - 120;
 });
-restartButton.addEventListener('click', () => game.handleClick());
+restartButton.addEventListener('click', (event) => {
+  event.stopPropagation();
+  game.handleClick();
+});
+overlay.addEventListener('click', (event) => {
+  if (event.target === overlay) {
+    game.handleClick();
+  }
+});
 game.init();
