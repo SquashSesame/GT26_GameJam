@@ -1,0 +1,34 @@
+{
+  "name": "gkt-shooter",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A vertical shooting game built with HTML, CSS and Electron.",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder --mac dmg --publish never"
+  },
+  "devDependencies": {
+    "electron": "^31.2.0",
+    "electron-builder": "^24.13.0"
+  },
+  "build": {
+    "appId": "com.gktgamejam.shooter",
+    "productName": "GKT Shooter",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "**/*",
+      "!**/*.ts",
+      "!**/node_modules/.cache/**"
+    ],
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "identity": null
+    }
+  }
+}

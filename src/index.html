@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GKT Shooter</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="game-shell">
+      <header class="hud">
+        <div>Score: <span id="score">0</span></div>
+        <div>Stage: <span id="stage">1</span></div>
+        <div>HP: <span id="hp">100</span></div>
+      </header>
+      <canvas id="gameCanvas" width="1000" height="700"></canvas>
+      <div id="overlay" class="overlay hidden">
+        <h1 id="overlayTitle">Stage 1</h1>
+        <p id="overlayMessage">Press Enter to start</p>
+        <button id="restartButton">Restart</button>
+      </div>
+    </div>
+
+    <script src="game.js"></script>
+  </body>
+</html>
