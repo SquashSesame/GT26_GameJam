@@ -508,6 +508,7 @@ class GameEngine {
     this.overlayTitle = document.getElementById('overlayTitle');
     this.overlayMessage = document.getElementById('overlayMessage');
     this.overlayLogo = document.getElementById('overlayLogo');
+    this.titleCharacter = document.getElementById('titleCharacter');
     this.screenTransition = document.getElementById('screenTransition');
     this.isTransitioning = false;
     this.restartButton = restartButton;
@@ -749,8 +750,10 @@ class GameEngine {
     this.overlay.classList.remove('hidden');
     if (showLogo) {
       this.overlayLogo.classList.remove('hidden');
+      this.titleCharacter.classList.remove('hidden');
     } else {
       this.overlayLogo.classList.add('hidden');
+      this.titleCharacter.classList.add('hidden');
     }
 
     if (fadeIn) {
@@ -766,6 +769,7 @@ class GameEngine {
   hideOverlay() {
     this.overlay.classList.add('hidden');
     this.overlayLogo.classList.add('hidden');
+    this.titleCharacter.classList.add('hidden');
   }
 
   startStage(newStage) {

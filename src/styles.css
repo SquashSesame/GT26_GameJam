@@ -116,6 +116,21 @@ canvas {
   display: none;
 }
 
+.title-character {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: clamp(140px, 32vw, 260px);
+  max-width: 60%;
+  height: auto;
+  pointer-events: none;
+}
+
+.title-character.hidden {
+  display: none;
+}
+
 button {
   border: none;
   border-radius: 999px;
