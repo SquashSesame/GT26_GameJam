@@ -77,9 +77,30 @@ canvas {
   backdrop-filter: blur(3px);
   color: white;
   text-align: center;
+  opacity: 1;
+  transition: opacity 0.6s ease;
 }
 
 .overlay.hidden {
+  display: none;
+}
+
+.overlay.overlay-fade {
+  opacity: 0;
+}
+
+.screen-transition {
+  position: absolute;
+  inset: 0;
+  border-radius: 18px;
+  background: #000000;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 10;
+  transition: opacity 400ms ease;
+}
+
+.screen-transition.hidden {
   display: none;
 }
 

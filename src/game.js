@@ -93,20 +93,81 @@ class PlayerStateMachine {
   }
 }
 
+class CompanyLogoState extends BaseState {
+  constructor(game) {
+    super(game);
+    this.customRender = true;
+    this.fadeInDuration = 0.6;
+    this.holdDuration = 2.0;
+    this.fadeOutDuration = 0.6;
+    this.elapsed = 0;
+    this.alpha = 0;
+    this.done = false;
+  }
+
+  enter() {
+    this.game.hideOverlay();
+    this.elapsed = 0;
+    this.alpha = 0;
+    this.done = false;
+  }
+
+  update(dt) {
+    if (this.done) {
+      return;
+    }
+    this.elapsed += dt;
+    const fadeInEnd = this.fadeInDuration;
+    const holdEnd = fadeInEnd + this.holdDuration;
+    const fadeOutEnd = holdEnd + this.fadeOutDuration;
+
+    if (this.elapsed < fadeInEnd) {
+      this.alpha = this.elapsed / this.fadeInDuration;
+    } else if (this.elapsed < holdEnd) {
+      this.alpha = 1;
+    } else if (this.elapsed < fadeOutEnd) {
+      this.alpha = 1 - (this.elapsed - holdEnd) / this.fadeOutDuration;
+    } else {
+      this.alpha = 0;
+      this.done = true;
+      this.game.transitionTo('title');
+    }
+  }
+
+  render() {
+    const ctx = this.game.ctx;
+    const canvas = this.game.canvas;
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const img = this.game.companyLogoImage;
+    if (img.complete && img.naturalWidth) {
+      const maxWidth = canvas.width * 0.6;
+      const scale = Math.min(maxWidth / img.naturalWidth, 1);
+      const w = img.naturalWidth * scale;
+      const h = img.naturalHeight * scale;
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, Math.min(1, this.alpha));
+      ctx.drawImage(img, (canvas.width - w) / 2, (canvas.height - h) / 2, w, h);
+      ctx.restore();
+    }
+  }
+}
+
 class TitleState extends BaseState {
   enter() {
-    this.game.showOverlay('GKT Shooter', 'Press Enter to start', true);
+    this.game.showOverlay('GKT Shooter', 'Press Enter to start', true, true);
     this.game.playTitleBgm();
   }
 
   handleKeyDown(event) {
     if (event.key === 'Enter') {
-      this.game.transitionTo('playing', { stage: 1 });
+      this.game.transitionToScreen('playing', { stage: 1 });
     }
   }
 
   handleClick() {
-    this.game.transitionTo('playing', { stage: 1 });
+    this.game.transitionToScreen('playing', { stage: 1 });
   }
 }
 
@@ -128,7 +189,7 @@ class PlayingState extends BaseState {
     this.game.shotCooldown -= dt;
     if (this.game.shotCooldown <= 0) {
       this.game.fireBullet();
-      this.game.shotCooldown = 0.05;
+      this.game.shotCooldown = 0.2;
     }
 
     this.game.updatePlayerBullets(dt);
@@ -212,6 +273,7 @@ class GameStateMachine {
   constructor(game) {
     this.game = game;
     this.states = {
+      companyLogo: new CompanyLogoState(game),
       title: new TitleState(game),
       playing: new PlayingState(game),
       gameover: new GameOverState(game),
@@ -263,6 +325,177 @@ class GameStateMachine {
   }
 }
 
+// 敵の種類の定義（見た目・耐久・スコア）。
+const ENEMY_TYPES = {
+  grunt: { width: 26, height: 26, hp: 1, color: '#ff6b6b', score: 100 },
+  diver: { width: 30, height: 30, hp: 2, color: '#ffa94d', score: 150 },
+  tank: { width: 40, height: 40, hp: 5, color: '#c77dff', score: 300 }
+};
+
+// 敵の移動アルゴリズムを表す基底クラス。
+class EnemyMovement {
+  constructor(params = {}) {
+    this.params = params;
+  }
+
+  // 敵がスポーンした直後に一度だけ呼ばれ、移動用の初期状態を設定する。
+  init(enemy, game) {}
+
+  // 毎フレーム呼ばれ、敵を移動させる。
+  update(enemy, dt, game) {}
+}
+
+// 左右の壁と下端で跳ね返りながら降りてくる（従来の動き）。
+class BounceMovement extends EnemyMovement {
+  init(enemy, game) {
+    const p = this.params;
+    enemy.vx = (p.speedX != null ? p.speedX : 90 + game.stage * 20) * (p.dir != null ? p.dir : 1);
+    enemy.vy = p.speedY != null ? p.speedY : 22 + game.stage * 2;
+  }
+
+  update(enemy, dt, game) {
+    enemy.x += enemy.vx * dt;
+    enemy.y += enemy.vy * dt;
+
+    const margin = 20;
+    if (enemy.x < margin || enemy.x > game.canvas.width - margin) {
+      enemy.vx *= -1;
+      enemy.x = Math.max(margin, Math.min(game.canvas.width - margin, enemy.x));
+    }
+
+    const bottom = game.canvas.height - 120;
+    if (enemy.y > bottom) {
+      enemy.y = bottom;
+      enemy.vy *= -1;
+    }
+  }
+}
+
+// まっすぐ下降する（画面外に出たら消える）。
+class StraightMovement extends EnemyMovement {
+  init(enemy, game) {
+    const p = this.params;
+    enemy.vx = p.speedX != null ? p.speedX : 0;
+    enemy.vy = p.speedY != null ? p.speedY : 70 + game.stage * 10;
+  }
+
+  update(enemy, dt, game) {
+    enemy.x += enemy.vx * dt;
+    enemy.y += enemy.vy * dt;
+  }
+}
+
+// 左右にサイン波で揺れながら下降する。
+class SineMovement extends EnemyMovement {
+  init(enemy, game) {
+    const p = this.params;
+    enemy.baseX = enemy.x;
+    enemy.phase = p.phase != null ? p.phase : 0;
+    enemy.vy = p.speedY != null ? p.speedY : 60 + game.stage * 8;
+    enemy.amplitude = p.amplitude != null ? p.amplitude : 90;
+    enemy.frequency = p.frequency != null ? p.frequency : 2.2;
+  }
+
+  update(enemy, dt, game) {
+    enemy.phase += dt * enemy.frequency;
+    enemy.y += enemy.vy * dt;
+    const margin = 20;
+    const x = enemy.baseX + Math.sin(enemy.phase) * enemy.amplitude;
+    enemy.x = Math.max(margin, Math.min(game.canvas.width - margin, x));
+  }
+}
+
+// 斜めに進み、左右の壁で反射しながら下降する（ジグザグ）。
+class ZigzagMovement extends EnemyMovement {
+  init(enemy, game) {
+    const p = this.params;
+    enemy.vx = (p.speedX != null ? p.speedX : 140 + game.stage * 10) * (p.dir != null ? p.dir : 1);
+    enemy.vy = p.speedY != null ? p.speedY : 50 + game.stage * 6;
+  }
+
+  update(enemy, dt, game) {
+    enemy.x += enemy.vx * dt;
+    enemy.y += enemy.vy * dt;
+
+    const margin = 20;
+    if (enemy.x < margin || enemy.x > game.canvas.width - margin) {
+      enemy.vx *= -1;
+      enemy.x = Math.max(margin, Math.min(game.canvas.width - margin, enemy.x));
+    }
+  }
+}
+
+// アルゴリズムタイプ名 → 移動クラス。出現テーブルの algorithm で指定する。
+const ENEMY_MOVEMENTS = {
+  bounce: BounceMovement,
+  straight: StraightMovement,
+  sine: SineMovement,
+  zigzag: ZigzagMovement
+};
+
+function createMovement(algorithm, params) {
+  const MovementClass = ENEMY_MOVEMENTS[algorithm] || BounceMovement;
+  return new MovementClass(params);
+}
+
+// 個々の敵。移動は movement（EnemyMovement）に委譲する。
+class Enemy {
+  constructor(config, movement) {
+    this.x = config.x;
+    this.y = config.y;
+    this.width = config.width;
+    this.height = config.height;
+    this.hp = config.hp;
+    this.maxHp = config.hp;
+    this.alive = true;
+    this.type = config.type;
+    this.color = config.color;
+    this.score = config.score;
+    this.movement = movement;
+  }
+
+  init(game) {
+    if (this.movement && this.movement.init) {
+      this.movement.init(this, game);
+    }
+  }
+
+  update(dt, game) {
+    if (this.movement && this.movement.update) {
+      this.movement.update(this, dt, game);
+    }
+  }
+}
+
+// 出現テーブルを時間経過にあわせて処理し、敵をスポーンさせる。
+// テーブルの各エントリ: { delay, type, count, algorithm, params?, ...formation }
+class SpawnController {
+  constructor(game) {
+    this.game = game;
+    this.reset([]);
+  }
+
+  reset(table) {
+    this.table = (table || []).map((entry) => ({ ...entry, spawned: false }));
+    this.elapsed = 0;
+  }
+
+  update(dt) {
+    this.elapsed += dt;
+    for (const entry of this.table) {
+      if (!entry.spawned && this.elapsed >= (entry.delay || 0)) {
+        entry.spawned = true;
+        this.game.spawnEntry(entry);
+      }
+    }
+  }
+
+  // テーブルの全エントリがスポーン済みか（＝ボス出現の前提）。
+  isFinished() {
+    return this.table.every((entry) => entry.spawned);
+  }
+}
+
 class GameEngine {
   constructor() {
     const game = this;
@@ -275,6 +508,8 @@ class GameEngine {
     this.overlayTitle = document.getElementById('overlayTitle');
     this.overlayMessage = document.getElementById('overlayMessage');
     this.overlayLogo = document.getElementById('overlayLogo');
+    this.screenTransition = document.getElementById('screenTransition');
+    this.isTransitioning = false;
     this.restartButton = restartButton;
     this.keys = {}; 
     this.mouse = { x: canvas.width / 2, y: canvas.height - 120 };
@@ -284,6 +519,8 @@ class GameEngine {
     this.playerImage.src = '../res/img/cat.png';
     this.bulletImage = new Image();
     this.bulletImage.src = '../res/img/btama.png';
+    this.companyLogoImage = new Image();
+    this.companyLogoImage.src = '../res/img/logo_gamejam.png';
     this.bgm = new Audio('../res/snd/bgm_street.ogg');
     this.bgm.loop = true;
     this.bgm.volume = 1;
@@ -357,19 +594,50 @@ class GameEngine {
     this.weaponLevel = 0;
     this.powerUps = [];
 
+    // 出現テーブルは spawnTables.js で定義（グローバルの SPAWN_TABLES）。
+    this.spawnTables = typeof SPAWN_TABLES !== 'undefined' ? SPAWN_TABLES : {};
+    this.spawnController = new SpawnController(this);
+
     this.stateMachine = new GameStateMachine(this);
     this.currentState = null;
   }
 
   init() {
     this.playerStateMachine.transitionTo('normal');
-    this.stateMachine.transitionTo('title');
+    this.stateMachine.transitionTo('companyLogo');
     this.updateHud();
     requestAnimationFrame((now) => this.gameLoop(now));
   }
 
   transitionTo(stateName, options = {}) {
     this.stateMachine.transitionTo(stateName, options);
+  }
+
+  transitionToScreen(stateName, options = {}, { fadeOut = 400, fadeIn = 400 } = {}) {
+    if (this.isTransitioning) {
+      return;
+    }
+    this.isTransitioning = true;
+
+    const el = this.screenTransition;
+    el.classList.remove('hidden');
+    el.style.transitionDuration = `${fadeOut}ms`;
+    // Force a reflow so the browser registers opacity 0 before fading to black.
+    void el.offsetWidth;
+    el.style.opacity = '1';
+
+    setTimeout(() => {
+      // Switch to the new screen while fully black, then fade back in.
+      this.transitionTo(stateName, options);
+      el.style.transitionDuration = `${fadeIn}ms`;
+      void el.offsetWidth;
+      el.style.opacity = '0';
+
+      setTimeout(() => {
+        el.classList.add('hidden');
+        this.isTransitioning = false;
+      }, fadeIn);
+    }, fadeOut);
   }
 
   resetGame() {
@@ -475,7 +743,7 @@ class GameEngine {
     this.hpEl.textContent = this.playerHp;
   }
 
-  showOverlay(title, message, showLogo = false) {
+  showOverlay(title, message, showLogo = false, fadeIn = false) {
     this.overlayTitle.textContent = title;
     this.overlayMessage.textContent = message;
     this.overlay.classList.remove('hidden');
@@ -483,6 +751,15 @@ class GameEngine {
       this.overlayLogo.classList.remove('hidden');
     } else {
       this.overlayLogo.classList.add('hidden');
+    }
+
+    if (fadeIn) {
+      // Start transparent, then transition to opaque on the next frame.
+      this.overlay.classList.add('overlay-fade');
+      void this.overlay.offsetWidth;
+      this.overlay.classList.remove('overlay-fade');
+    } else {
+      this.overlay.classList.remove('overlay-fade');
     }
   }
 
@@ -502,7 +779,7 @@ class GameEngine {
     this.shotCooldown = 0;
     this.powerUps = [];
     this.updateHud();
-    this.spawnWave();
+    this.spawnController.reset(this.getSpawnTable(newStage));
   }
 
   startGame() {
@@ -510,29 +787,68 @@ class GameEngine {
     this.transitionTo('playing', { stage: 1 });
   }
 
-  spawnWave() {
-    this.enemies = [];
-    const count = 5 + this.stage * 2;
-    const cols = Math.min(7, Math.max(5, Math.floor((this.canvas.width - 160) / 90)));
-    const spacingX = cols > 1 ? (this.canvas.width - 160) / (cols - 1) : 0;
+  // ステージの出現テーブルを返す。未定義のステージは自動生成のフォールバック。
+  getSpawnTable(stage) {
+    if (this.spawnTables[stage]) {
+      return this.spawnTables[stage];
+    }
+    return [
+      { delay: 0.8, type: 'grunt', count: 5 + stage * 2, algorithm: 'bounce' },
+      { delay: 6.0, type: 'diver', count: 4 + stage, algorithm: 'sine' }
+    ];
+  }
+
+  // 画面上部に敵を横並び（複数行）で配置する座標を返す。
+  buildFormation(count, entry) {
+    const positions = [];
+    const cols = Math.min(7, Math.max(1, entry.columns || Math.min(count, 6)));
+    const usableWidth = this.canvas.width - 160;
+    const spacingX = cols > 1 ? usableWidth / (cols - 1) : 0;
     const startX = 80;
-    const startY = 90;
-    const rowSpacing = 70;
+    const startY = entry.startY != null ? entry.startY : -40;
+    const rowSpacing = entry.rowSpacing != null ? entry.rowSpacing : 60;
 
     for (let i = 0; i < count; i += 1) {
       const col = i % cols;
       const row = Math.floor(i / cols);
-      this.enemies.push({
-        x: startX + col * spacingX,
-        y: startY + row * rowSpacing,
-        width: 26,
-        height: 26,
-        vx: 90 + this.stage * 20,
-        vy: 22 + this.stage * 2,
-        hp: 1 + Math.floor(this.stage / 3),
-        alive: true
+      positions.push({
+        x: cols > 1 ? startX + col * spacingX : this.canvas.width / 2,
+        y: startY - row * rowSpacing
       });
     }
+    return positions;
+  }
+
+  // 出現テーブルの1エントリぶんの敵を生成する。
+  spawnEntry(entry) {
+    const typeDef = ENEMY_TYPES[entry.type] || ENEMY_TYPES.grunt;
+    const count = entry.count != null ? entry.count : 1;
+    const hp = typeDef.hp + Math.floor(this.stage / 3);
+    const positions = this.buildFormation(count, entry);
+
+    positions.forEach((pos, i) => {
+      const params = { ...(entry.params || {}) };
+      // 個体ごとに動きへ変化を付ける（向き・サインの位相）。
+      if (params.dir === undefined) {
+        params.dir = i % 2 === 0 ? 1 : -1;
+      }
+      if (entry.algorithm === 'sine' && params.phase === undefined) {
+        params.phase = i * 0.6;
+      }
+
+      const enemy = new Enemy({
+        x: pos.x,
+        y: pos.y,
+        width: typeDef.width,
+        height: typeDef.height,
+        hp,
+        type: entry.type,
+        color: typeDef.color,
+        score: typeDef.score
+      }, createMovement(entry.algorithm, params));
+      enemy.init(this);
+      this.enemies.push(enemy);
+    });
   }
 
   spawnBoss() {
@@ -605,6 +921,21 @@ class GameEngine {
     });
   }
 
+  // 中心 (x, y) から四方八方へ弾を放つ（弾幕用の全方位バースト）。
+  fireEnemyRadial(x, y, count, speed, angleOffset = 0) {
+    for (let i = 0; i < count; i += 1) {
+      const angle = angleOffset + (Math.PI * 2 * i) / count;
+      this.enemyBullets.push({
+        x,
+        y,
+        width: 10,
+        height: 10,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed
+      });
+    }
+  }
+
   updatePlayerBullets(dt) {
     this.playerBullets = this.playerBullets.filter((bullet) => {
       bullet.x += bullet.vx * dt;
@@ -615,8 +946,9 @@ class GameEngine {
 
   updateEnemyBullets(dt) {
     this.enemyBullets = this.enemyBullets.filter((bullet) => {
+      bullet.x += (bullet.vx || 0) * dt;
       bullet.y += bullet.vy * dt;
-      return bullet.y > -20 && bullet.y < this.canvas.height + 20;
+      return bullet.y > -30 && bullet.y < this.canvas.height + 30 && bullet.x > -30 && bullet.x < this.canvas.width + 30;
     });
   }
 
@@ -647,19 +979,20 @@ class GameEngine {
   }
 
   updateEnemies(dt) {
+    // 出現テーブルにしたがって敵をスポーンさせる（ウェーブ中のみ）。
+    if (this.stageState === 'wave') {
+      this.spawnController.update(dt);
+    }
+
     this.enemies = this.enemies.filter((enemy) => {
       if (!enemy.alive) return false;
-      enemy.x += enemy.vx * dt;
-      enemy.y += enemy.vy * dt;
 
-      if (enemy.x < 20 || enemy.x > this.canvas.width - 20) {
-        enemy.vx *= -1;
-        enemy.x = Math.max(20, Math.min(this.canvas.width - 20, enemy.x));
-      }
+      // 移動は各敵の movement クラスに委譲する。
+      enemy.update(dt, this);
 
-      if (enemy.y > this.canvas.height - 120) {
-        enemy.y = this.canvas.height - 120;
-        enemy.vy *= -1;
+      // 画面下に抜けた敵は退場させる（まっすぐ下降するタイプなど）。
+      if (enemy.y > this.canvas.height + 60) {
+        return false;
       }
 
       for (const bullet of this.playerBullets) {
@@ -667,8 +1000,8 @@ class GameEngine {
           enemy.hp -= 1;
           bullet.y = -999;
           if (enemy.hp <= 0) {
-            this.score += 100;
-            this.createParticles(enemy.x, enemy.y, '#ff6b6b');
+            this.score += enemy.score || 100;
+            this.createParticles(enemy.x, enemy.y, enemy.color || '#ff6b6b');
             if (Math.random() < 0.22) {
               this.spawnPowerUp(enemy.x, enemy.y);
             }
@@ -681,7 +1014,8 @@ class GameEngine {
       return true;
     });
 
-    if (this.enemies.length === 0 && this.boss === null && this.stateMachine.currentState === this.stateMachine.states.playing && this.stageState === 'wave') {
+    // 出現テーブルを消化し切り、かつ敵が全滅したらボスへ移行する。
+    if (this.spawnController.isFinished() && this.enemies.length === 0 && this.boss === null && this.stateMachine.currentState === this.stateMachine.states.playing && this.stageState === 'wave') {
       this.stageState = 'boss';
       this.showOverlay(`Stage ${this.stage}`, 'Boss incoming!');
       setTimeout(() => {
@@ -717,13 +1051,15 @@ class GameEngine {
     }
 
     if (this.boss.alive && Math.random() < 0.022) {
-      this.enemyBullets.push({
-        x: this.boss.x + this.boss.width / 2,
-        y: this.boss.y + this.boss.height,
-        width: 8,
-        height: 18,
-        vy: 320
-      });
+      // 四方八方へ放つ全方位バースト。1回あたり14発（従来の約10倍の弾量）。
+      this.boss.spiralAngle = (this.boss.spiralAngle || 0) + 0.3;
+      this.fireEnemyRadial(
+        this.boss.x + this.boss.width / 2,
+        this.boss.y + this.boss.height / 2,
+        14,
+        300,
+        this.boss.spiralAngle
+      );
     }
   }
 
@@ -736,6 +1072,19 @@ class GameEngine {
     });
   }
 
+  // プレイヤーにダメージを与える（無敵中は無効）。
+  damagePlayer(amount) {
+    if (this.player.invulnerable) return;
+
+    this.playerHp -= amount;
+    this.player.transitionTo('invulnerable');
+    this.createParticles(this.player.x, this.player.y, '#5cf2ff');
+    this.updateHud();
+    if (this.playerHp <= 0) {
+      this.transitionTo('gameover');
+    }
+  }
+
   checkPlayerHit() {
     const playerRect = {
       x: this.player.x - this.player.width / 2,
@@ -744,21 +1093,34 @@ class GameEngine {
       height: this.player.height
     };
 
-    for (const bullet of this.enemyBullets) {
-      if (bullet.vy > 0 && bullet.x < playerRect.x + playerRect.width && bullet.x + bullet.width > playerRect.x && bullet.y < playerRect.y + playerRect.height && bullet.y + bullet.height > playerRect.y) {
-        if (this.player.invulnerable) {
-          bullet.y = -999;
-          return;
-        }
+    const overlaps = (x, y, width, height) =>
+      x < playerRect.x + playerRect.width &&
+      x + width > playerRect.x &&
+      y < playerRect.y + playerRect.height &&
+      y + height > playerRect.y;
 
-        this.playerHp -= 10;
-        this.player.transitionTo('invulnerable');
+    // 敵の弾との接触。
+    for (const bullet of this.enemyBullets) {
+      if (overlaps(bullet.x, bullet.y, bullet.width, bullet.height)) {
         bullet.y = -999;
-        this.createParticles(this.player.x, this.player.y, '#5cf2ff');
-        if (this.playerHp <= 0) {
-          this.transitionTo('gameover');
-        }
+        this.damagePlayer(10);
         return;
+      }
+    }
+
+    // 敵本体との接触。
+    for (const enemy of this.enemies) {
+      if (!enemy.alive) continue;
+      if (overlaps(enemy.x - enemy.width / 2, enemy.y - enemy.height / 2, enemy.width, enemy.height)) {
+        this.damagePlayer(20);
+        return;
+      }
+    }
+
+    // ボス本体との接触。
+    if (this.boss && this.boss.alive) {
+      if (overlaps(this.boss.x - this.boss.width / 2, this.boss.y - this.boss.height / 2, this.boss.width, this.boss.height)) {
+        this.damagePlayer(20);
       }
     }
   }
@@ -857,8 +1219,8 @@ class GameEngine {
   }
 
   drawEnemies() {
-    this.ctx.fillStyle = '#ff6b6b';
     for (const enemy of this.enemies) {
+      this.ctx.fillStyle = enemy.color || '#ff6b6b';
       this.ctx.fillRect(enemy.x - enemy.width / 2, enemy.y - enemy.height / 2, enemy.width, enemy.height);
     }
   }
@@ -887,14 +1249,19 @@ class GameEngine {
 
     this.stateMachine.update(dt);
 
-    this.drawBackground(dt);
-    this.drawParticles();
-    this.drawPowerUps();
-    this.drawEnemies();
-    this.drawBoss();
-    this.drawEnemyBullets();
-    this.drawPlayerBullets();
-    this.drawPlayer();
+    const state = this.stateMachine.currentState;
+    if (state && state.customRender) {
+      state.render(dt);
+    } else {
+      this.drawBackground(dt);
+      this.drawParticles();
+      this.drawPowerUps();
+      this.drawEnemies();
+      this.drawBoss();
+      this.drawEnemyBullets();
+      this.drawPlayerBullets();
+      this.drawPlayer();
+    }
 
     requestAnimationFrame((nextTime) => this.gameLoop(nextTime));
   }
