@@ -2,11 +2,17 @@
 // game.js より前に読み込むこと。
 // グローバルの ENEMY_TYPES / createMovement / Enemy / SpawnController を参照する。
 
-// 敵の種類の定義（見た目・耐久・スコア）。
+// 敵の表示・当たり判定サイズの倍率（基準サイズに対する拡大率）。
+const ENEMY_SIZE_SCALE = 5;
+
+// 敵の下降速度（縦方向 vy）の倍率。デフォルト値・テーブルの speedY 指定の両方に効く。
+const ENEMY_DESCENT_SCALE = 3;
+
+// 敵の種類の定義（見た目・耐久・スコア）。width/height には ENEMY_SIZE_SCALE を掛けたサイズを用いる。
 const ENEMY_TYPES = {
-  grunt: { width: 26, height: 26, hp: 1, color: '#ff6b6b', score: 100 },
-  diver: { width: 30, height: 30, hp: 2, color: '#ffa94d', score: 150 },
-  tank: { width: 40, height: 40, hp: 5, color: '#c77dff', score: 300 }
+  grunt: { width: 26 * ENEMY_SIZE_SCALE, height: 26 * ENEMY_SIZE_SCALE, hp: 1, color: '#ff6b6b', score: 100 },
+  diver: { width: 30 * ENEMY_SIZE_SCALE, height: 30 * ENEMY_SIZE_SCALE, hp: 2, color: '#ffa94d', score: 150 },
+  tank: { width: 40 * ENEMY_SIZE_SCALE, height: 40 * ENEMY_SIZE_SCALE, hp: 5, color: '#c77dff', score: 300 }
 };
 
 // 敵の移動アルゴリズムを表す基底クラス。
@@ -27,7 +33,7 @@ class BounceMovement extends EnemyMovement {
   init(enemy, game) {
     const p = this.params;
     enemy.vx = (p.speedX != null ? p.speedX : 90 + game.stage * 20) * (p.dir != null ? p.dir : 1);
-    enemy.vy = p.speedY != null ? p.speedY : 22 + game.stage * 2;
+    enemy.vy = (p.speedY != null ? p.speedY : 140 + game.stage * 2) * ENEMY_DESCENT_SCALE;
   }
 
   update(enemy, dt, game) {
@@ -43,7 +49,7 @@ class BounceMovement extends EnemyMovement {
     const bottom = game.canvas.height - 120;
     if (enemy.y > bottom) {
       enemy.y = bottom;
-      enemy.vy *= -1;
+      enemy.vy *= -3;
     }
   }
 }
@@ -53,7 +59,7 @@ class StraightMovement extends EnemyMovement {
   init(enemy, game) {
     const p = this.params;
     enemy.vx = p.speedX != null ? p.speedX : 0;
-    enemy.vy = p.speedY != null ? p.speedY : 70 + game.stage * 10;
+    enemy.vy = (p.speedY != null ? p.speedY : 70 + game.stage * 10) * ENEMY_DESCENT_SCALE;
   }
 
   update(enemy, dt, game) {
@@ -68,7 +74,7 @@ class SineMovement extends EnemyMovement {
     const p = this.params;
     enemy.baseX = enemy.x;
     enemy.phase = p.phase != null ? p.phase : 0;
-    enemy.vy = p.speedY != null ? p.speedY : 60 + game.stage * 8;
+    enemy.vy = (p.speedY != null ? p.speedY : 60 + game.stage * 8) * ENEMY_DESCENT_SCALE;
     enemy.amplitude = p.amplitude != null ? p.amplitude : 90;
     enemy.frequency = p.frequency != null ? p.frequency : 2.2;
   }
@@ -87,7 +93,7 @@ class ZigzagMovement extends EnemyMovement {
   init(enemy, game) {
     const p = this.params;
     enemy.vx = (p.speedX != null ? p.speedX : 140 + game.stage * 10) * (p.dir != null ? p.dir : 1);
-    enemy.vy = p.speedY != null ? p.speedY : 50 + game.stage * 6;
+    enemy.vy = (p.speedY != null ? p.speedY : 140 + game.stage * 6) * ENEMY_DESCENT_SCALE;
   }
 
   update(enemy, dt, game) {
@@ -128,6 +134,8 @@ class Enemy {
     this.type = config.type;
     this.color = config.color;
     this.score = config.score;
+    // 出現テーブルで指定された敵画像（未指定なら null。その場合は単色矩形で描画）。
+    this.image = config.image || null;
     this.movement = movement;
   }
 
@@ -144,8 +152,12 @@ class Enemy {
   }
 }
 
+// エントリ内で敵を1体ずつ生成する際の間隔（秒）。count 体をこの間隔でずらして出す。
+const SPAWN_STAGGER = 0.02;
+
 // 出現テーブルを時間経過にあわせて処理し、敵をスポーンさせる。
 // テーブルの各エントリ: { delay, type, count, algorithm, params?, ...formation }
+// 各エントリの count 体は、delay 経過後に SPAWN_STAGGER 秒ずつ間隔を空けて1体ずつ生成する。
 class SpawnController {
   constructor(game) {
     this.game = game;
@@ -153,22 +165,31 @@ class SpawnController {
   }
 
   reset(table) {
-    this.table = (table || []).map((entry) => ({ ...entry, spawned: false }));
+    // spawnedCount: そのエントリで既に生成した敵の数。
+    this.table = (table || []).map((entry) => ({ ...entry, spawnedCount: 0 }));
     this.elapsed = 0;
   }
 
   update(dt) {
     this.elapsed += dt;
     for (const entry of this.table) {
-      if (!entry.spawned && this.elapsed >= (entry.delay || 0)) {
-        entry.spawned = true;
-        this.game.spawnEntry(entry);
+      const count = entry.count != null ? entry.count : 1;
+      const delay = entry.delay || 0;
+      // 経過時間に達したぶんだけ、index 順に1体ずつ生成する。
+      // （1フレームで複数体ぶんの時間が経過していれば while で追いつく。）
+      while (entry.spawnedCount < count &&
+             this.elapsed >= delay + entry.spawnedCount * SPAWN_STAGGER) {
+        this.game.spawnEnemyAt(entry, entry.spawnedCount, count);
+        entry.spawnedCount += 1;
       }
     }
   }
 
-  // テーブルの全エントリがスポーン済みか（＝ボス出現の前提）。
+  // テーブルの全エントリを最後まで生成し切ったか（＝ボス出現の前提）。
   isFinished() {
-    return this.table.every((entry) => entry.spawned);
+    return this.table.every((entry) => {
+      const count = entry.count != null ? entry.count : 1;
+      return entry.spawnedCount >= count;
+    });
   }
 }

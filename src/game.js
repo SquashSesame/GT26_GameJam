@@ -297,6 +297,8 @@ class GameEngine {
     this.bulletImage.src = '../res/img/btama.png';
     this.companyLogoImage = new Image();
     this.companyLogoImage.src = '../res/img/logo_gamejam.png';
+    // 出現テーブルで image 指定された敵画像を、ファイル名ごとにキャッシュして使い回す。
+    this.enemyImages = {};
     this.bgm = new Audio('../res/snd/bgm_game2.ogg');
     this.bgm.loop = true;
     this.bgm.volume = 1;
@@ -564,36 +566,54 @@ class GameEngine {
     return positions;
   }
 
-  // 出現テーブルの1エントリぶんの敵を生成する。
-  spawnEntry(entry) {
+  // 敵画像を res/img 内のファイル名で取得する。生成した Image はキャッシュして使い回す。
+  getEnemyImage(name) {
+    if (!name) {
+      return null;
+    }
+    if (!this.enemyImages[name]) {
+      const img = new Image();
+      img.src = `../res/img/${name}`;
+      this.enemyImages[name] = img;
+    }
+    return this.enemyImages[name];
+  }
+
+  // 出現テーブルの1エントリのうち、index 番目の敵を1体だけ生成する。
+  // count はエントリの総数（隊形の座標計算に使う）。
+  spawnEnemyAt(entry, index, count) {
     const typeDef = ENEMY_TYPES[entry.type] || ENEMY_TYPES.grunt;
-    const count = entry.count != null ? entry.count : 1;
     const hp = typeDef.hp + Math.floor(this.stage / 3);
     const positions = this.buildFormation(count, entry);
+    const pos = positions[index];
+    if (!pos) {
+      return;
+    }
+    // テーブルで image が指定されていれば、その画像で敵を描画する。
+    const image = this.getEnemyImage(entry.image);
 
-    positions.forEach((pos, i) => {
-      const params = { ...(entry.params || {}) };
-      // 個体ごとに動きへ変化を付ける（向き・サインの位相）。
-      if (params.dir === undefined) {
-        params.dir = i % 2 === 0 ? 1 : -1;
-      }
-      if (entry.algorithm === 'sine' && params.phase === undefined) {
-        params.phase = i * 0.6;
-      }
+    const params = { ...(entry.params || {}) };
+    // 個体ごとに動きへ変化を付ける（向き・サインの位相）。
+    if (params.dir === undefined) {
+      params.dir = index % 2 === 0 ? 1 : -1;
+    }
+    if (entry.algorithm === 'sine' && params.phase === undefined) {
+      params.phase = index * 0.6;
+    }
 
-      const enemy = new Enemy({
-        x: pos.x,
-        y: pos.y,
-        width: typeDef.width,
-        height: typeDef.height,
-        hp,
-        type: entry.type,
-        color: typeDef.color,
-        score: typeDef.score
-      }, createMovement(entry.algorithm, params));
-      enemy.init(this);
-      this.enemies.push(enemy);
-    });
+    const enemy = new Enemy({
+      x: pos.x,
+      y: pos.y,
+      width: typeDef.width,
+      height: typeDef.height,
+      hp,
+      type: entry.type,
+      color: typeDef.color,
+      score: typeDef.score,
+      image
+    }, createMovement(entry.algorithm, params));
+    enemy.init(this);
+    this.enemies.push(enemy);
   }
 
   spawnBoss() {
@@ -995,8 +1015,14 @@ class GameEngine {
 
   drawEnemies() {
     for (const enemy of this.enemies) {
-      this.ctx.fillStyle = enemy.color || '#ff6b6b';
-      this.ctx.fillRect(enemy.x - enemy.width / 2, enemy.y - enemy.height / 2, enemy.width, enemy.height);
+      // 画像が指定され読み込み済みなら画像で、そうでなければ従来の単色矩形で描画する。
+      const img = enemy.image;
+      if (img && img.complete && img.naturalWidth) {
+        this.ctx.drawImage(img, enemy.x - enemy.width / 2, enemy.y - enemy.height / 2, enemy.width, enemy.height);
+      } else {
+        this.ctx.fillStyle = enemy.color || '#ff6b6b';
+        this.ctx.fillRect(enemy.x - enemy.width / 2, enemy.y - enemy.height / 2, enemy.width, enemy.height);
+      }
     }
   }
 
