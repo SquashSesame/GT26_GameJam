@@ -276,6 +276,8 @@ class GameEngine {
     this.mouse = { x: canvas.width / 2, y: canvas.height - 120 };
     this.backgroundImage = new Image();
     this.backgroundImage.src = '../res/img/street.png';
+    this.playerImage = new Image();
+    this.playerImage.src = '../res/img/cat.png';
     this.bulletImage = new Image();
     this.bulletImage.src = '../res/img/btama.png';
     this.backgroundScrollV = 0;
@@ -286,9 +288,9 @@ class GameEngine {
     this.maxStages = 3;
     this.player = {
       x: canvas.width / 2,
-      y: canvas.height - 90,
-      width: 28,
-      height: 34,
+      y: canvas.height - 110,
+      width: 112,
+      height: 136,
       speed: 280,
       invulnerable: false,
       stateMachine: null,
@@ -319,8 +321,10 @@ class GameEngine {
           player.y += (dy / len) * player.speed * dt;
         }
 
-        player.x = Math.max(20, Math.min(game.canvas.width - 20, player.x));
-        player.y = Math.max(20, Math.min(game.canvas.height - 20, player.y));
+        const xMargin = player.width / 2 + 8;
+        const yMargin = player.height / 2 + 8;
+        player.x = Math.max(xMargin, Math.min(game.canvas.width - xMargin, player.x));
+        player.y = Math.max(yMargin, Math.min(game.canvas.height - yMargin, player.y));
       },
       update: (dt) => {
         player.stateMachine.update(dt);
@@ -362,7 +366,7 @@ class GameEngine {
     this.stage = 1;
     this.playerHp = 100;
     this.player.x = this.canvas.width / 2;
-    this.player.y = this.canvas.height - 90;
+    this.player.y = this.canvas.height - 110;
     this.playerBullets = [];
     this.enemyBullets = [];
     this.enemies = [];
@@ -501,9 +505,9 @@ class GameEngine {
     pattern.forEach(([dx, dy = -1]) => {
       const bullet = {
         x: this.player.x,
-        y: this.player.y - 10,
-        width: 14,
-        height: 14,
+        y: this.player.y - this.player.height / 2 - 10,
+        width: 56,
+        height: 56,
         vx: (dx || 0) * 180,
         vy: 560 * (dy || 1),
         rotation: Math.random() * Math.PI * 2
@@ -707,6 +711,15 @@ class GameEngine {
 
   drawPlayer() {
     if (this.player.invulnerable && Math.floor(performance.now() / 100) % 2 === 0) {
+      return;
+    }
+
+    const img = this.playerImage;
+    if (img.complete && img.naturalWidth) {
+      this.ctx.save();
+      this.ctx.translate(this.player.x, this.player.y);
+      this.ctx.drawImage(img, -this.player.width / 2, -this.player.height / 2, this.player.width, this.player.height);
+      this.ctx.restore();
       return;
     }
 

@@ -68,9 +68,10 @@ canvas {
   inset: 0;
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start;
   align-items: center;
   gap: 12px;
+  padding-top: 40px;
   border-radius: 18px;
   background: rgba(2, 4, 13, 0.8);
   backdrop-filter: blur(3px);
@@ -84,10 +85,10 @@ canvas {
 
 .overlay-logo {
   display: block;
-  width: clamp(220px, 35vw, 380px);
+  width: clamp(280px, 48vw, 520px);
   max-width: 100%;
   height: auto;
-  margin: 0 auto 16px;
+  margin: 0 auto 24px;
 }
 
 .overlay-logo.hidden {
