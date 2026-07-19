@@ -96,6 +96,7 @@ class PlayerStateMachine {
 class TitleState extends BaseState {
   enter() {
     this.game.showOverlay('GKT Shooter', 'Press Enter to start', true);
+    this.game.playTitleBgm();
   }
 
   handleKeyDown(event) {
@@ -114,6 +115,7 @@ class PlayingState extends BaseState {
     this.game.hideOverlay();
     this.game.stage = options.stage || this.game.stage;
     this.game.startStage(this.game.stage);
+    this.game.playBgm();
   }
 
   update(dt) {
@@ -126,7 +128,7 @@ class PlayingState extends BaseState {
     this.game.shotCooldown -= dt;
     if (this.game.shotCooldown <= 0) {
       this.game.fireBullet();
-      this.game.shotCooldown = 0.1;
+      this.game.shotCooldown = 0.05;
     }
 
     this.game.updatePlayerBullets(dt);
@@ -147,6 +149,7 @@ class PlayingState extends BaseState {
 
 class GameOverState extends BaseState {
   enter() {
+    this.game.fadeOutBgm();
     this.game.showOverlay('Game Over', 'Press Enter to return to title');
   }
 
@@ -190,6 +193,7 @@ class StageClearState extends BaseState {
 
 class GameClearState extends BaseState {
   enter() {
+    this.game.fadeOutBgm();
     this.game.showOverlay('Game Clear', 'Press Enter to return to title');
   }
 
@@ -280,6 +284,13 @@ class GameEngine {
     this.playerImage.src = '../res/img/cat.png';
     this.bulletImage = new Image();
     this.bulletImage.src = '../res/img/btama.png';
+    this.bgm = new Audio('../res/snd/bgm_street.ogg');
+    this.bgm.loop = true;
+    this.bgm.volume = 1;
+    this.titleBgm = new Audio('../res/snd/bgm_title.ogg');
+    this.titleBgm.loop = true;
+    this.titleBgm.volume = 1;
+    this.crossfadeDuration = 500;
     this.backgroundScrollV = 0;
     this.backgroundScrollSpeed = 90;
     this.score = 0;
@@ -378,6 +389,84 @@ class GameEngine {
     this.powerUps = [];
     this.player.transitionTo('normal');
     this.updateHud();
+  }
+
+  startAudio(audio, volume = 1) {
+    audio.loop = true;
+    audio.volume = Math.max(0, Math.min(1, volume));
+    if (audio.paused) {
+      audio.currentTime = 0;
+    }
+    const playPromise = audio.play();
+    if (playPromise && typeof playPromise.catch === 'function') {
+      playPromise.catch(() => {});
+    }
+  }
+
+  fadeAudio(audio, targetVolume, duration = 500, pauseAtEnd = false) {
+    if (audio._fadeTimer) {
+      clearInterval(audio._fadeTimer);
+      audio._fadeTimer = null;
+    }
+    const stepMs = 25;
+    const startVolume = audio.volume;
+    const target = Math.max(0, Math.min(1, targetVolume));
+    const steps = Math.max(1, Math.round(duration / stepMs));
+    let step = 0;
+    audio._fadeTimer = setInterval(() => {
+      step += 1;
+      const t = step / steps;
+      audio.volume = Math.max(0, Math.min(1, startVolume + (target - startVolume) * t));
+      if (step >= steps) {
+        clearInterval(audio._fadeTimer);
+        audio._fadeTimer = null;
+        audio.volume = target;
+        if (pauseAtEnd && target <= 0) {
+          audio.pause();
+          audio.currentTime = 0;
+        }
+      }
+    }, stepMs);
+  }
+
+  playTitleBgm() {
+    if (this.bgm._fadeTimer) {
+      clearInterval(this.bgm._fadeTimer);
+      this.bgm._fadeTimer = null;
+    }
+    this.bgm.pause();
+    this.bgm.currentTime = 0;
+    this.startAudio(this.titleBgm, 1);
+  }
+
+  playBgm() {
+    const titlePlaying = this.titleBgm && !this.titleBgm.paused;
+
+    if (this.bgm.paused) {
+      // Start the game BGM. If the title BGM is playing, begin silent and fade in.
+      this.startAudio(this.bgm, titlePlaying ? 0 : 1);
+      if (titlePlaying) {
+        this.fadeAudio(this.bgm, 1, this.crossfadeDuration);
+      }
+    } else {
+      // Already playing (e.g. stage transition): keep it going at full volume.
+      if (this.bgm._fadeTimer) {
+        clearInterval(this.bgm._fadeTimer);
+        this.bgm._fadeTimer = null;
+      }
+      this.bgm.volume = 1;
+    }
+
+    if (titlePlaying) {
+      // Crossfade: fade the title BGM out while the game BGM fades in.
+      this.fadeAudio(this.titleBgm, 0, this.crossfadeDuration, true);
+    }
+  }
+
+  fadeOutBgm(duration = 1500) {
+    if (!this.bgm.paused) {
+      this.fadeAudio(this.bgm, 0, duration, true);
+    }
   }
 
   updateHud() {
