@@ -1113,15 +1113,23 @@ class GameEngine {
       height: this.player.height
     };
 
-    const overlaps = (x, y, width, height) =>
-      x < playerRect.x + playerRect.width &&
-      x + width > playerRect.x &&
-      y < playerRect.y + playerRect.height &&
-      y + height > playerRect.y;
+    const overlaps = (rect, x, y, width, height) =>
+      x < rect.x + rect.width &&
+      x + width > rect.x &&
+      y < rect.y + rect.height &&
+      y + height > rect.y;
+
+    // 敵の弾に当たる範囲は本体の半分（中心基準）に縮小する。
+    const bulletHitRect = {
+      x: this.player.x - this.player.width / 4,
+      y: this.player.y - this.player.height / 4,
+      width: this.player.width / 2,
+      height: this.player.height / 2
+    };
 
     // 敵の弾との接触。
     for (const bullet of this.enemyBullets) {
-      if (overlaps(bullet.x, bullet.y, bullet.width, bullet.height)) {
+      if (overlaps(bulletHitRect, bullet.x, bullet.y, bullet.width, bullet.height)) {
         bullet.y = -999;
         this.damagePlayer();
         return;
@@ -1131,7 +1139,7 @@ class GameEngine {
     // 敵本体との接触。
     for (const enemy of this.enemies) {
       if (!enemy.alive) continue;
-      if (overlaps(enemy.x - enemy.width / 2, enemy.y - enemy.height / 2, enemy.width, enemy.height)) {
+      if (overlaps(playerRect, enemy.x - enemy.width / 2, enemy.y - enemy.height / 2, enemy.width, enemy.height)) {
         this.damagePlayer();
         return;
       }
@@ -1139,7 +1147,7 @@ class GameEngine {
 
     // ボス本体との接触。
     if (this.boss && this.boss.alive) {
-      if (overlaps(this.boss.x - this.boss.width / 2, this.boss.y - this.boss.height / 2, this.boss.width, this.boss.height)) {
+      if (overlaps(playerRect, this.boss.x - this.boss.width / 2, this.boss.y - this.boss.height / 2, this.boss.width, this.boss.height)) {
         this.damagePlayer();
       }
     }
