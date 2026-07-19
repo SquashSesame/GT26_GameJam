@@ -95,7 +95,7 @@ class PlayerStateMachine {
 
 class TitleState extends BaseState {
   enter() {
-    this.game.showOverlay('GKT Shooter', 'Press Enter to start');
+    this.game.showOverlay('GKT Shooter', 'Press Enter to start', true);
   }
 
   handleKeyDown(event) {
@@ -270,11 +270,14 @@ class GameEngine {
     this.overlay = overlay;
     this.overlayTitle = document.getElementById('overlayTitle');
     this.overlayMessage = document.getElementById('overlayMessage');
+    this.overlayLogo = document.getElementById('overlayLogo');
     this.restartButton = restartButton;
-    this.keys = {};
+    this.keys = {}; 
     this.mouse = { x: canvas.width / 2, y: canvas.height - 120 };
     this.backgroundImage = new Image();
     this.backgroundImage.src = '../res/img/street.png';
+    this.bulletImage = new Image();
+    this.bulletImage.src = '../res/img/btama.png';
     this.backgroundScrollV = 0;
     this.backgroundScrollSpeed = 90;
     this.score = 0;
@@ -379,14 +382,20 @@ class GameEngine {
     this.hpEl.textContent = this.playerHp;
   }
 
-  showOverlay(title, message) {
+  showOverlay(title, message, showLogo = false) {
     this.overlayTitle.textContent = title;
     this.overlayMessage.textContent = message;
     this.overlay.classList.remove('hidden');
+    if (showLogo) {
+      this.overlayLogo.classList.remove('hidden');
+    } else {
+      this.overlayLogo.classList.add('hidden');
+    }
   }
 
   hideOverlay() {
     this.overlay.classList.add('hidden');
+    this.overlayLogo.classList.add('hidden');
   }
 
   startStage(newStage) {
@@ -411,13 +420,18 @@ class GameEngine {
   spawnWave() {
     this.enemies = [];
     const count = 5 + this.stage * 2;
-    const rowCount = this.stage > 2 ? 4 : 3;
+    const cols = Math.min(7, Math.max(5, Math.floor((this.canvas.width - 160) / 90)));
+    const spacingX = cols > 1 ? (this.canvas.width - 160) / (cols - 1) : 0;
+    const startX = 80;
+    const startY = 90;
+    const rowSpacing = 70;
 
     for (let i = 0; i < count; i += 1) {
-      const row = i % rowCount;
+      const col = i % cols;
+      const row = Math.floor(i / cols);
       this.enemies.push({
-        x: 80 + (i % 8) * 100,
-        y: 70 + row * 56,
+        x: startX + col * spacingX,
+        y: startY + row * rowSpacing,
         width: 26,
         height: 26,
         vx: 90 + this.stage * 20,
@@ -488,10 +502,11 @@ class GameEngine {
       const bullet = {
         x: this.player.x,
         y: this.player.y - 10,
-        width: 6,
-        height: 16,
+        width: 14,
+        height: 14,
         vx: (dx || 0) * 180,
-        vy: 560 * (dy || 1)
+        vy: 560 * (dy || 1),
+        rotation: Math.random() * Math.PI * 2
       };
       this.playerBullets.push(bullet);
     });
@@ -710,9 +725,18 @@ class GameEngine {
   }
 
   drawPlayerBullets() {
-    this.ctx.fillStyle = '#ffe66d';
+    const img = this.bulletImage;
     for (const bullet of this.playerBullets) {
-      this.ctx.fillRect(bullet.x - bullet.width / 2, bullet.y - bullet.height / 2, bullet.width, bullet.height);
+      if (img.complete && img.naturalWidth) {
+        this.ctx.save();
+        this.ctx.translate(bullet.x, bullet.y);
+        this.ctx.rotate(bullet.rotation);
+        this.ctx.drawImage(img, -bullet.width / 2, -bullet.height / 2, bullet.width, bullet.height);
+        this.ctx.restore();
+      } else {
+        this.ctx.fillStyle = '#ffe66d';
+        this.ctx.fillRect(bullet.x - bullet.width / 2, bullet.y - bullet.height / 2, bullet.width, bullet.height);
+      }
     }
   }
 

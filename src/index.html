@@ -13,11 +13,14 @@
         <div>Stage: <span id="stage">1</span></div>
         <div>HP: <span id="hp">100</span></div>
       </header>
-      <canvas id="gameCanvas" width="1000" height="700"></canvas>
-      <div id="overlay" class="overlay hidden">
-        <h1 id="overlayTitle">Stage 1</h1>
-        <p id="overlayMessage">Press Enter to start</p>
-        <button id="restartButton">Restart</button>
+      <div class="game-view">
+        <canvas id="gameCanvas" width="720" height="1280"></canvas>
+        <div id="overlay" class="overlay hidden">
+          <img id="overlayLogo" class="overlay-logo hidden" src="../res/img/logo.png" alt="Game Logo" />
+          <h1 id="overlayTitle">Stage 1</h1>
+          <p id="overlayMessage">Press Enter to start</p>
+          <button id="restartButton">Restart</button>
+        </div>
       </div>
     </div>
 

@@ -20,10 +20,24 @@ body {
 
 .game-shell {
   position: relative;
-  width: min(100vw, 1100px);
-  max-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: min(100vw, 720px);
+  max-width: 100%;
+  margin: 0 auto;
   padding: 20px;
   overflow: hidden;
+}
+
+.game-view {
+  position: relative;
+  width: min(100vw, calc((100vh - 120px) * 9 / 16));
+  height: min(calc(100vh - 120px), calc(100vw * 16 / 9));
+  max-width: 100%;
+  max-height: calc(100vh - 120px);
+  aspect-ratio: 9 / 16;
+  margin: 0 auto;
 }
 
 .hud {
@@ -42,8 +56,7 @@ body {
 canvas {
   display: block;
   width: 100%;
-  height: auto;
-  max-height: calc(100vh - 140px);
+  height: 100%;
   border: 1px solid rgba(255,255,255,0.12);
   border-radius: 18px;
   background: #050816;
@@ -66,6 +79,18 @@ canvas {
 }
 
 .overlay.hidden {
+  display: none;
+}
+
+.overlay-logo {
+  display: block;
+  width: clamp(220px, 35vw, 380px);
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto 16px;
+}
+
+.overlay-logo.hidden {
   display: none;
 }
 
