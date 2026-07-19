@@ -16,9 +16,17 @@ npm install
 npm start
 ```
 
-## 配布用ビルド
-```bash
-npm run dist
-```
 
 macOS では dmg 形式のインストーラーが生成されます。
+
+### Windows x64 用ビルド
+```bash
+npm run dist:win
+```
+
+このコマンドは Windows x64 向けの NSIS インストーラーを生成します。
+
+### macOS 用ビルド
+```bash
+npm run dist:mac
+```

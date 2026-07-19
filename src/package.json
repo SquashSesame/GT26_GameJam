@@ -7,7 +7,9 @@
   "scripts": {
     "start": "electron .",
     "pack": "electron-builder --dir",
-    "dist": "electron-builder --mac dmg --publish never"
+    "dist": "electron-builder --mac dmg --win nsis --x64 --publish never",
+    "dist:mac": "electron-builder --mac dmg --publish never",
+    "dist:win": "electron-builder --win nsis --x64 --publish never"
   },
   "devDependencies": {
     "electron": "^31.2.0",
@@ -29,6 +31,14 @@
         "dmg"
       ],
       "identity": null
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ]
     }
   }
 }
