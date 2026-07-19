@@ -2,7 +2,7 @@ const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 const scoreEl = document.getElementById('score');
 const stageEl = document.getElementById('stage');
-const hpEl = document.getElementById('hp');
+const livesEl = document.getElementById('lives');
 const overlay = document.getElementById('overlay');
 const overlayTitle = document.getElementById('overlayTitle');
 const overlayMessage = document.getElementById('overlayMessage');
@@ -156,6 +156,8 @@ class CompanyLogoState extends BaseState {
 
 class TitleState extends BaseState {
   enter() {
+    // 敵・弾・ボス・パーティクルなどゲーム中のオブジェクトを全てリセットする。
+    this.game.resetGame();
     this.game.showOverlay('GKT Shooter', 'Press Enter to start', true, true);
     this.game.playTitleBgm();
   }
@@ -180,7 +182,7 @@ class PlayingState extends BaseState {
   }
 
   update(dt) {
-    if (this.game.playerHp <= 0) {
+    if (this.game.lives <= 0) {
       this.game.transitionTo('gameover');
       return;
     }
@@ -203,7 +205,8 @@ class PlayingState extends BaseState {
 
   handleKeyDown(event) {
     if (event.key === 'Escape') {
-      this.game.transitionTo('title');
+      this.game.fadeOutBgm();
+      this.game.transitionToScreen('title');
     }
   }
 }
@@ -216,12 +219,12 @@ class GameOverState extends BaseState {
 
   handleKeyDown(event) {
     if (event.key === 'Enter') {
-      this.game.transitionTo('title');
+      this.game.transitionToScreen('title');
     }
   }
 
   handleClick() {
-    this.game.transitionTo('title');
+    this.game.transitionToScreen('title');
   }
 }
 
@@ -260,12 +263,12 @@ class GameClearState extends BaseState {
 
   handleKeyDown(event) {
     if (event.key === 'Enter') {
-      this.game.transitionTo('title');
+      this.game.transitionToScreen('title');
     }
   }
 
   handleClick() {
-    this.game.transitionTo('title');
+    this.game.transitionToScreen('title');
   }
 }
 
@@ -503,7 +506,7 @@ class GameEngine {
     this.ctx = ctx;
     this.scoreEl = scoreEl;
     this.stageEl = stageEl;
-    this.hpEl = hpEl;
+    this.livesEl = livesEl;
     this.overlay = overlay;
     this.overlayTitle = document.getElementById('overlayTitle');
     this.overlayMessage = document.getElementById('overlayMessage');
@@ -522,18 +525,22 @@ class GameEngine {
     this.bulletImage.src = '../res/img/btama.png';
     this.companyLogoImage = new Image();
     this.companyLogoImage.src = '../res/img/logo_gamejam.png';
-    this.bgm = new Audio('../res/snd/bgm_street.ogg');
+    this.bgm = new Audio('../res/snd/bgm_game2.ogg');
     this.bgm.loop = true;
     this.bgm.volume = 1;
     this.titleBgm = new Audio('../res/snd/bgm_title.ogg');
     this.titleBgm.loop = true;
     this.titleBgm.volume = 1;
+    this.bossBgm = new Audio('../res/snd/bgm_boss.ogg');
+    this.bossBgm.loop = true;
+    this.bossBgm.volume = 1;
     this.crossfadeDuration = 500;
     this.backgroundScrollV = 0;
     this.backgroundScrollSpeed = 90;
     this.score = 0;
     this.stage = 1;
-    this.playerHp = 100;
+    this.maxLives = 3;
+    this.lives = this.maxLives;
     this.maxStages = 3;
     this.player = {
       x: canvas.width / 2,
@@ -644,7 +651,7 @@ class GameEngine {
   resetGame() {
     this.score = 0;
     this.stage = 1;
-    this.playerHp = 100;
+    this.lives = this.maxLives;
     this.player.x = this.canvas.width / 2;
     this.player.y = this.canvas.height - 110;
     this.playerBullets = [];
@@ -656,6 +663,9 @@ class GameEngine {
     this.stageState = 'wave';
     this.weaponLevel = 0;
     this.powerUps = [];
+    if (this.spawnController) {
+      this.spawnController.reset([]);
+    }
     this.player.transitionTo('normal');
     this.updateHud();
   }
@@ -698,50 +708,54 @@ class GameEngine {
     }, stepMs);
   }
 
-  playTitleBgm() {
-    if (this.bgm._fadeTimer) {
-      clearInterval(this.bgm._fadeTimer);
-      this.bgm._fadeTimer = null;
+  // 指定したBGMへ音量をクロスフェードで切り替える。
+  // 他のBGMは同時にフェードアウトして停止する。
+  crossfadeTo(target, duration = this.crossfadeDuration) {
+    const tracks = [this.bgm, this.titleBgm, this.bossBgm];
+    for (const track of tracks) {
+      if (track === target) continue;
+      if (!track.paused) {
+        this.fadeAudio(track, 0, duration, true);
+      }
     }
-    this.bgm.pause();
-    this.bgm.currentTime = 0;
-    this.startAudio(this.titleBgm, 1);
+
+    if (target.paused) {
+      // 停止中なら音量0から開始してフェードイン。
+      this.startAudio(target, 0);
+    } else if (target._fadeTimer) {
+      // すでに再生中（フェード中）ならフェードをやり直す。
+      clearInterval(target._fadeTimer);
+      target._fadeTimer = null;
+    }
+    this.fadeAudio(target, 1, duration);
+  }
+
+  playTitleBgm() {
+    this.crossfadeTo(this.titleBgm);
   }
 
   playBgm() {
-    const titlePlaying = this.titleBgm && !this.titleBgm.paused;
+    this.crossfadeTo(this.bgm);
+  }
 
-    if (this.bgm.paused) {
-      // Start the game BGM. If the title BGM is playing, begin silent and fade in.
-      this.startAudio(this.bgm, titlePlaying ? 0 : 1);
-      if (titlePlaying) {
-        this.fadeAudio(this.bgm, 1, this.crossfadeDuration);
-      }
-    } else {
-      // Already playing (e.g. stage transition): keep it going at full volume.
-      if (this.bgm._fadeTimer) {
-        clearInterval(this.bgm._fadeTimer);
-        this.bgm._fadeTimer = null;
-      }
-      this.bgm.volume = 1;
-    }
-
-    if (titlePlaying) {
-      // Crossfade: fade the title BGM out while the game BGM fades in.
-      this.fadeAudio(this.titleBgm, 0, this.crossfadeDuration, true);
-    }
+  // ボス出現時にボスBGMへクロスフェードする。
+  playBossBgm() {
+    this.crossfadeTo(this.bossBgm);
   }
 
   fadeOutBgm(duration = 1500) {
-    if (!this.bgm.paused) {
-      this.fadeAudio(this.bgm, 0, duration, true);
+    const tracks = [this.bgm, this.titleBgm, this.bossBgm];
+    for (const track of tracks) {
+      if (!track.paused) {
+        this.fadeAudio(track, 0, duration, true);
+      }
     }
   }
 
   updateHud() {
     this.scoreEl.textContent = this.score;
     this.stageEl.textContent = this.stage;
-    this.hpEl.textContent = this.playerHp;
+    this.livesEl.textContent = this.lives;
   }
 
   showOverlay(title, message, showLogo = false, fadeIn = false) {
@@ -1022,6 +1036,8 @@ class GameEngine {
     if (this.spawnController.isFinished() && this.enemies.length === 0 && this.boss === null && this.stateMachine.currentState === this.stateMachine.states.playing && this.stageState === 'wave') {
       this.stageState = 'boss';
       this.showOverlay(`Stage ${this.stage}`, 'Boss incoming!');
+      // ボス出現の予告と同時にボスBGMへクロスフェードする。
+      this.playBossBgm();
       setTimeout(() => {
         this.hideOverlay();
         this.spawnBoss();
@@ -1076,15 +1092,15 @@ class GameEngine {
     });
   }
 
-  // プレイヤーにダメージを与える（無敵中は無効）。
-  damagePlayer(amount) {
+  // プレイヤーにダメージを与える（無敵中は無効）。1回のダメージで残機を1減らす。
+  damagePlayer() {
     if (this.player.invulnerable) return;
 
-    this.playerHp -= amount;
+    this.lives -= 1;
     this.player.transitionTo('invulnerable');
     this.createParticles(this.player.x, this.player.y, '#5cf2ff');
     this.updateHud();
-    if (this.playerHp <= 0) {
+    if (this.lives <= 0) {
       this.transitionTo('gameover');
     }
   }
@@ -1107,7 +1123,7 @@ class GameEngine {
     for (const bullet of this.enemyBullets) {
       if (overlaps(bullet.x, bullet.y, bullet.width, bullet.height)) {
         bullet.y = -999;
-        this.damagePlayer(10);
+        this.damagePlayer();
         return;
       }
     }
@@ -1116,7 +1132,7 @@ class GameEngine {
     for (const enemy of this.enemies) {
       if (!enemy.alive) continue;
       if (overlaps(enemy.x - enemy.width / 2, enemy.y - enemy.height / 2, enemy.width, enemy.height)) {
-        this.damagePlayer(20);
+        this.damagePlayer();
         return;
       }
     }
@@ -1124,7 +1140,7 @@ class GameEngine {
     // ボス本体との接触。
     if (this.boss && this.boss.alive) {
       if (overlaps(this.boss.x - this.boss.width / 2, this.boss.y - this.boss.height / 2, this.boss.width, this.boss.height)) {
-        this.damagePlayer(20);
+        this.damagePlayer();
       }
     }
   }
@@ -1161,6 +1177,26 @@ class GameEngine {
       const x = (i * 97) % this.canvas.width;
       const y = 40 + Math.sin(i * 0.7) * 18 + (i * 37) % this.canvas.height;
       this.ctx.fillRect(x, y, 2, 2);
+    }
+  }
+
+  // 残機を画面右下にプレイヤーアイコン（64x64）で表示する。
+  drawLives() {
+    const img = this.playerImage;
+    const size = 64;
+    const gap = 8;
+    const margin = 16;
+    const y = this.canvas.height - margin - size;
+
+    for (let i = 0; i < this.lives; i += 1) {
+      // 右詰めで左方向へ並べる。
+      const x = this.canvas.width - margin - size - i * (size + gap);
+      if (img.complete && img.naturalWidth) {
+        this.ctx.drawImage(img, x, y, size, size);
+      } else {
+        this.ctx.fillStyle = '#59f2ff';
+        this.ctx.fillRect(x, y, size, size);
+      }
     }
   }
 
@@ -1265,6 +1301,11 @@ class GameEngine {
       this.drawEnemyBullets();
       this.drawPlayerBullets();
       this.drawPlayer();
+
+      // ゲーム中のみ残機アイコンを表示する。
+      if (state === this.stateMachine.states.playing) {
+        this.drawLives();
+      }
     }
 
     requestAnimationFrame((nextTime) => this.gameLoop(nextTime));
