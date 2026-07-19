@@ -8,6 +8,15 @@ const ENEMY_SIZE_SCALE = 5;
 // 敵の下降速度（縦方向 vy）の倍率。デフォルト値・テーブルの speedY 指定の両方に効く。
 const ENEMY_DESCENT_SCALE = 3;
 
+// 通常敵がプレイヤーへ弾を撃つ間隔（秒）の範囲。敵ごとにこの範囲でランダムに設定する。
+const ENEMY_SHOT_INTERVAL_MIN = 2.0;
+const ENEMY_SHOT_INTERVAL_MAX = 5.0;
+
+// 敵の次の射撃までの待ち時間（秒）を、上記範囲でランダムに返す。
+function randomShotInterval() {
+  return ENEMY_SHOT_INTERVAL_MIN + Math.random() * (ENEMY_SHOT_INTERVAL_MAX - ENEMY_SHOT_INTERVAL_MIN);
+}
+
 // 敵の種類の定義（見た目・耐久・スコア）。width/height には ENEMY_SIZE_SCALE を掛けたサイズを用いる。
 const ENEMY_TYPES = {
   grunt: { width: 26 * ENEMY_SIZE_SCALE, height: 26 * ENEMY_SIZE_SCALE, hp: 1, color: '#ff6b6b', score: 100 },
@@ -136,6 +145,8 @@ class Enemy {
     this.score = config.score;
     // 出現テーブルで指定された敵画像（未指定なら null。その場合は単色矩形で描画）。
     this.image = config.image || null;
+    // プレイヤーへの射撃までの残り時間（秒）。敵ごとにランダムで初期化し、発射のたびに再設定する。
+    this.shootCooldown = randomShotInterval();
     this.movement = movement;
   }
 
@@ -158,6 +169,7 @@ const SPAWN_STAGGER = 0.02;
 // 出現テーブルを時間経過にあわせて処理し、敵をスポーンさせる。
 // テーブルの各エントリ: { delay, type, count, algorithm, params?, ...formation }
 // 各エントリの count 体は、delay 経過後に SPAWN_STAGGER 秒ずつ間隔を空けて1体ずつ生成する。
+// { delay, boss: true } のエントリは、delay 経過時にボス戦へ移行する。
 class SpawnController {
   constructor(game) {
     this.game = game;
@@ -165,7 +177,7 @@ class SpawnController {
   }
 
   reset(table) {
-    // spawnedCount: そのエントリで既に生成した敵の数。
+    // spawnedCount: そのエントリで既に生成した敵の数（boss エントリは 0/1 で発火済みを表す）。
     this.table = (table || []).map((entry) => ({ ...entry, spawnedCount: 0 }));
     this.elapsed = 0;
   }
@@ -173,8 +185,19 @@ class SpawnController {
   update(dt) {
     this.elapsed += dt;
     for (const entry of this.table) {
-      const count = entry.count != null ? entry.count : 1;
       const delay = entry.delay || 0;
+
+      // ボス出現エントリ: 指定時間になったら1回だけボス戦へ移行する。
+      // entry は image 等のボス設定を持つのでそのまま渡す。
+      if (entry.boss) {
+        if (entry.spawnedCount < 1 && this.elapsed >= delay) {
+          entry.spawnedCount = 1;
+          this.game.startBossPhase(entry);
+        }
+        continue;
+      }
+
+      const count = entry.count != null ? entry.count : 1;
       // 経過時間に達したぶんだけ、index 順に1体ずつ生成する。
       // （1フレームで複数体ぶんの時間が経過していれば while で追いつく。）
       while (entry.spawnedCount < count &&
@@ -185,7 +208,12 @@ class SpawnController {
     }
   }
 
-  // テーブルの全エントリを最後まで生成し切ったか（＝ボス出現の前提）。
+  // 出現テーブルにボス出現エントリ（boss: true）が含まれるか。
+  hasBossEntry() {
+    return this.table.some((entry) => entry.boss);
+  }
+
+  // テーブルの全エントリを最後まで消化し切ったか（＝敵全滅フォールバックでのボス出現の前提）。
   isFinished() {
     return this.table.every((entry) => {
       const count = entry.count != null ? entry.count : 1;

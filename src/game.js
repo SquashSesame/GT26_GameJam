@@ -285,6 +285,7 @@ class GameEngine {
     this.overlayLogo = document.getElementById('overlayLogo');
     this.titleCharacter = document.getElementById('titleCharacter');
     this.screenTransition = document.getElementById('screenTransition');
+    this.bossWarning = document.getElementById('bossWarning');
     this.isTransitioning = false;
     this.restartButton = restartButton;
     this.keys = {}; 
@@ -297,8 +298,8 @@ class GameEngine {
     this.bulletImage.src = '../res/img/btama.png';
     this.companyLogoImage = new Image();
     this.companyLogoImage.src = '../res/img/logo_gamejam.png';
-    // 出現テーブルで image 指定された敵画像を、ファイル名ごとにキャッシュして使い回す。
-    this.enemyImages = {};
+    // 出現テーブルで image 指定された画像（敵・ボス）を、ファイル名ごとにキャッシュして使い回す。
+    this.images = {};
     this.bgm = new Audio('../res/snd/bgm_game2.ogg');
     this.bgm.loop = true;
     this.bgm.volume = 1;
@@ -392,6 +393,7 @@ class GameEngine {
     this.stageState = 'wave';
     this.weaponLevel = 0;
     this.powerUps = [];
+    this.hideBossWarning();
     if (this.spawnController) {
       this.spawnController.reset([]);
     }
@@ -525,6 +527,7 @@ class GameEngine {
     this.particles = [];
     this.shotCooldown = 0;
     this.powerUps = [];
+    this.hideBossWarning();
     this.updateHud();
     this.spawnController.reset(this.getSpawnTable(newStage));
   }
@@ -566,17 +569,17 @@ class GameEngine {
     return positions;
   }
 
-  // 敵画像を res/img 内のファイル名で取得する。生成した Image はキャッシュして使い回す。
-  getEnemyImage(name) {
+  // 画像を res/img 内のファイル名で取得する。生成した Image はキャッシュして使い回す。
+  getImage(name) {
     if (!name) {
       return null;
     }
-    if (!this.enemyImages[name]) {
+    if (!this.images[name]) {
       const img = new Image();
       img.src = `../res/img/${name}`;
-      this.enemyImages[name] = img;
+      this.images[name] = img;
     }
-    return this.enemyImages[name];
+    return this.images[name];
   }
 
   // 出現テーブルの1エントリのうち、index 番目の敵を1体だけ生成する。
@@ -590,7 +593,7 @@ class GameEngine {
       return;
     }
     // テーブルで image が指定されていれば、その画像で敵を描画する。
-    const image = this.getEnemyImage(entry.image);
+    const image = this.getImage(entry.image);
 
     const params = { ...(entry.params || {}) };
     // 個体ごとに動きへ変化を付ける（向き・サインの位相）。
@@ -616,15 +619,19 @@ class GameEngine {
     this.enemies.push(enemy);
   }
 
-  spawnBoss() {
+  spawnBoss(image = null) {
+    // ボスの表示・当たり判定サイズ（基準 72px の 4 倍）。
+    const size = 72 * 4;
     this.boss = {
       x: this.canvas.width / 2,
       y: 120,
-      width: 72,
-      height: 72,
+      width: size,
+      height: size,
       hp: 26 + this.stage * 4,
       alive: true,
-      phase: 0
+      phase: 0,
+      // 出現テーブルで指定されたボス画像（未指定なら null。その場合は矩形で描画）。
+      image
     };
   }
 
@@ -701,6 +708,21 @@ class GameEngine {
     }
   }
 
+  // 指定位置 (x, y) から現在のプレイヤー位置へ向けて敵弾を1発放つ。
+  fireEnemyAimed(x, y, speed = 260) {
+    const dx = this.player.x - x;
+    const dy = this.player.y - y;
+    const dist = Math.hypot(dx, dy) || 1;
+    this.enemyBullets.push({
+      x,
+      y,
+      width: 10,
+      height: 10,
+      vx: (dx / dist) * speed,
+      vy: (dy / dist) * speed
+    });
+  }
+
   updatePlayerBullets(dt) {
     this.playerBullets = this.playerBullets.filter((bullet) => {
       bullet.x += bullet.vx * dt;
@@ -755,13 +777,34 @@ class GameEngine {
       // 移動は各敵の movement クラスに委譲する。
       enemy.update(dt, this);
 
-      // 画面下に抜けた敵は退場させる（まっすぐ下降するタイプなど）。
-      if (enemy.y > this.canvas.height + 60) {
+      // 画面外まで大きく外れた敵は退場させる。
+      // 上端だけは、出現直後（画面上から降りてくる敵）を誤って消さないよう、
+      // 上向きに移動している敵（vy < 0：bounce が下端で跳ね返って上へ抜けたもの）に限定する。
+      const cullMargin = 80;
+      if (
+        enemy.y > this.canvas.height + cullMargin ||
+        enemy.x < -cullMargin ||
+        enemy.x > this.canvas.width + cullMargin ||
+        (enemy.vy < 0 && enemy.y < -cullMargin)
+      ) {
         return false;
       }
 
+      // 画面内にいる間、ランダムな間隔でプレイヤーへ向けて弾を1発撃つ。
+      if (enemy.y > 0 && enemy.y < this.canvas.height) {
+        enemy.shootCooldown -= dt;
+        if (enemy.shootCooldown <= 0) {
+          this.fireEnemyAimed(enemy.x, enemy.y);
+          enemy.shootCooldown = randomShotInterval();
+        }
+      }
+
       for (const bullet of this.playerBullets) {
-        if (bullet.x < enemy.x + enemy.width && bullet.x + bullet.width > enemy.x && bullet.y < enemy.y + enemy.height && bullet.y + bullet.height > enemy.y) {
+        // 弾・敵ともに x/y は中心座標。中心基準で重なりを判定する。
+        if (
+          Math.abs(bullet.x - enemy.x) < (bullet.width + enemy.width) / 2 &&
+          Math.abs(bullet.y - enemy.y) < (bullet.height + enemy.height) / 2
+        ) {
           enemy.hp -= 1;
           bullet.y = -999;
           if (enemy.hp <= 0) {
@@ -779,17 +822,46 @@ class GameEngine {
       return true;
     });
 
-    // 出現テーブルを消化し切り、かつ敵が全滅したらボスへ移行する。
-    if (this.spawnController.isFinished() && this.enemies.length === 0 && this.boss === null && this.stateMachine.currentState === this.stateMachine.states.playing && this.stageState === 'wave') {
-      this.stageState = 'boss';
-      this.showOverlay(`Stage ${this.stage}`, 'Boss incoming!');
-      // ボス出現の予告と同時にボスBGMへクロスフェードする。
-      this.playBossBgm();
-      setTimeout(() => {
-        this.hideOverlay();
-        this.spawnBoss();
-      }, 1000);
+    // 出現テーブルにボス出現エントリがある場合は、その時間指定に任せる（SpawnController が発火）。
+    // ボスエントリが無いテーブルのみ、従来どおり「全消化＋敵全滅」でボスへ移行する（後方互換）。
+    if (!this.spawnController.hasBossEntry() &&
+        this.spawnController.isFinished() && this.enemies.length === 0 &&
+        this.boss === null && this.stateMachine.currentState === this.stateMachine.states.playing &&
+        this.stageState === 'wave') {
+      this.startBossPhase();
     }
+  }
+
+  // ボス戦フェーズへ移行する（予告表示 → ボスBGMへ切替 → 1秒後にボス出現）。
+  // 出現テーブルのボスエントリ（image 等の設定を持つ）、または「敵全滅」フォールバックから呼ばれる。
+  startBossPhase(entry = {}) {
+    // 二重発火防止（既にボス戦、またはボス出現済み、プレイ中でない場合は無視）。
+    if (this.stageState === 'boss' || this.boss) {
+      return;
+    }
+    if (this.stateMachine.currentState !== this.stateMachine.states.playing) {
+      return;
+    }
+    this.stageState = 'boss';
+    // テーブルで image が指定されていれば、その画像でボスを描画する。
+    const image = this.getImage(entry.image);
+    // ボス出現前は「WARNING」の帯テロップを画面中央に表示する（背景の暗転はしない）。
+    this.showBossWarning();
+    // ボス出現の予告と同時にボスBGMへクロスフェードする。
+    this.playBossBgm();
+    setTimeout(() => {
+      this.hideBossWarning();
+      this.spawnBoss(image);
+    }, 1000);
+  }
+
+  // ボス出現前の「WARNING」帯テロップの表示／非表示。
+  showBossWarning() {
+    this.bossWarning.classList.remove('hidden');
+  }
+
+  hideBossWarning() {
+    this.bossWarning.classList.add('hidden');
   }
 
   updateBoss(dt) {
@@ -799,10 +871,14 @@ class GameEngine {
     this.boss.y = 120 + Math.sin(this.boss.phase * 2) * 24;
 
     for (const bullet of this.playerBullets) {
-      if (bullet.x < this.boss.x + this.boss.width && bullet.x + bullet.width > this.boss.x && bullet.y < this.boss.y + this.boss.height && bullet.y + bullet.height > this.boss.y) {
+      // 弾・ボスともに x/y は中心座標。中心基準で重なりを判定する。
+      if (
+        Math.abs(bullet.x - this.boss.x) < (bullet.width + this.boss.width) / 2 &&
+        Math.abs(bullet.y - this.boss.y) < (bullet.height + this.boss.height) / 2
+      ) {
         this.boss.hp -= 1;
         bullet.y = -999;
-        this.createParticles(this.boss.x + this.boss.width / 2, this.boss.y + this.boss.height / 2, '#ffd166');
+        this.createParticles(this.boss.x, this.boss.y, '#ffd166');
         if (this.boss.hp <= 0) {
           this.boss.alive = false;
           this.score += 1000;
@@ -819,10 +895,11 @@ class GameEngine {
 
     if (this.boss.alive && Math.random() < 0.022) {
       // 四方八方へ放つ全方位バースト。1回あたり14発（従来の約10倍の弾量）。
+      // boss.x/y はボス画像の中心。弾も中心から放つ。
       this.boss.spiralAngle = (this.boss.spiralAngle || 0) + 0.3;
       this.fireEnemyRadial(
-        this.boss.x + this.boss.width / 2,
-        this.boss.y + this.boss.height / 2,
+        this.boss.x,
+        this.boss.y,
         14,
         300,
         this.boss.spiralAngle
@@ -1030,10 +1107,16 @@ class GameEngine {
     if (!this.boss || !this.boss.alive) return;
     this.ctx.save();
     this.ctx.translate(this.boss.x, this.boss.y);
-    this.ctx.fillStyle = '#ff5d8f';
-    this.ctx.fillRect(-this.boss.width / 2, -this.boss.height / 2, this.boss.width, this.boss.height);
-    this.ctx.fillStyle = '#7dff9a';
-    this.ctx.fillRect(-this.boss.width / 2 + 10, -this.boss.height / 2 + 10, this.boss.width - 20, this.boss.height - 20);
+    // 画像が指定され読み込み済みなら画像で、そうでなければ従来の矩形で描画する。
+    const img = this.boss.image;
+    if (img && img.complete && img.naturalWidth) {
+      this.ctx.drawImage(img, -this.boss.width / 2, -this.boss.height / 2, this.boss.width, this.boss.height);
+    } else {
+      this.ctx.fillStyle = '#ff5d8f';
+      this.ctx.fillRect(-this.boss.width / 2, -this.boss.height / 2, this.boss.width, this.boss.height);
+      this.ctx.fillStyle = '#7dff9a';
+      this.ctx.fillRect(-this.boss.width / 2 + 10, -this.boss.height / 2 + 10, this.boss.width - 20, this.boss.height - 20);
+    }
     this.ctx.restore();
   }
 
