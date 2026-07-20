@@ -291,22 +291,22 @@ class GameEngine {
     this.keys = {}; 
     this.mouse = { x: canvas.width / 2, y: canvas.height - 120 };
     this.backgroundImage = new Image();
-    this.backgroundImage.src = '../res/img/street.png';
+    this.backgroundImage.src = 'res/img/street.png';
     this.playerImage = new Image();
-    this.playerImage.src = '../res/img/cat.png';
+    this.playerImage.src = 'res/img/cat.png';
     this.bulletImage = new Image();
-    this.bulletImage.src = '../res/img/btama.png';
+    this.bulletImage.src = 'res/img/btama.png';
     this.companyLogoImage = new Image();
-    this.companyLogoImage.src = '../res/img/logo_gamejam.png';
+    this.companyLogoImage.src = 'res/img/logo_gamejam.png';
     // 出現テーブルで image 指定された画像（敵・ボス）を、ファイル名ごとにキャッシュして使い回す。
     this.images = {};
-    this.bgm = new Audio('../res/snd/bgm_game2.ogg');
+    this.bgm = new Audio('res/snd/bgm_game2.ogg');
     this.bgm.loop = true;
     this.bgm.volume = 1;
-    this.titleBgm = new Audio('../res/snd/bgm_title.ogg');
+    this.titleBgm = new Audio('res/snd/bgm_title.ogg');
     this.titleBgm.loop = true;
     this.titleBgm.volume = 1;
-    this.bossBgm = new Audio('../res/snd/bgm_boss.ogg');
+    this.bossBgm = new Audio('res/snd/bgm_boss.ogg');
     this.bossBgm.loop = true;
     this.bossBgm.volume = 1;
     this.crossfadeDuration = 500;
@@ -576,7 +576,7 @@ class GameEngine {
     }
     if (!this.images[name]) {
       const img = new Image();
-      img.src = `../res/img/${name}`;
+      img.src = `res/img/${name}`;
       this.images[name] = img;
     }
     return this.images[name];
