@@ -145,6 +145,11 @@ class PlayingState extends BaseState {
       this.game.stageIntroTimer = Math.max(0, this.game.stageIntroTimer - dt);
     }
 
+    // ステージクリアテロップの経過時間を進める（フェーズ切り替え用）。
+    if (this.game.stageClearActive) {
+      this.game.stageClearElapsed += dt;
+    }
+
     this.game.player.update(dt);
 
     // プレイヤーの被弾フラッシュを時間で減衰させる。
@@ -345,7 +350,7 @@ class GameEngine {
     this.backgroundScrollSpeed = 90;
     this.score = 0;
     this.stage = 1;
-    this.maxLives = 100;
+    this.maxLives = 20;
     this.lives = this.maxLives;
     this.maxStages = 3;
     // プレイヤーの生成・移動・状態管理は player.js に分離している。
@@ -381,9 +386,13 @@ class GameEngine {
     // ステージテーブルは stages.js で定義（グローバルの STAGES_BY_NUMBER）。
     this.stages = typeof STAGES_BY_NUMBER !== 'undefined' ? STAGES_BY_NUMBER : {};
     this.stageName = '';
+    this.stageClearItem = '';
     // ステージ開始テロップ（残り表示時間 / 秒）。
     this.stageIntroTimer = 0;
     this.stageIntroDuration = 2.5;
+    // ステージクリアテロップ（ボス撃破〜次ステージ移動まで表示）。
+    this.stageClearActive = false;
+    this.stageClearElapsed = 0;
 
     this.stateMachine = new GameStateMachine(this);
     this.currentState = null;
@@ -448,6 +457,9 @@ class GameEngine {
     this.currentWeapon = null;
     this.weaponItems = [];
     this.portals = [];
+    this.stageClearActive = false;
+    this.stageClearElapsed = 0;
+    this.stageIntroTimer = 0;
     this.hideBossWarning();
     if (this.spawnController) {
       this.spawnController.reset([]);
@@ -589,8 +601,10 @@ class GameEngine {
     this.player.y = this.canvas.height - 110;
     // ステージテーブルにしたがい、背景画像とステージ名を設定する。
     this.applyStage(newStage);
-    // ステージ開始テロップを表示開始する。
+    // ステージ開始テロップを表示開始し、ステージクリアテロップは消す。
     this.stageIntroTimer = this.stageIntroDuration;
+    this.stageClearActive = false;
+    this.stageClearElapsed = 0;
     this.hideBossWarning();
     this.updateHud();
     this.spawnController.reset(this.getSpawnTable(newStage));
@@ -598,13 +612,15 @@ class GameEngine {
 
   // ステージ番号に対応するステージ定義を返す（未定義なら既定値でフォールバック）。
   getStageDef(stage) {
-    return this.stages[stage] || { stage, name: `Stage ${stage}`, image: 'bg_street.png', bgm: 'bgm_game2.ogg' };
+    return this.stages[stage] || { stage, name: `Stage ${stage}`, image: 'bg_street.png', bgm: 'bgm_game2.ogg', clearItem: '' };
   }
 
   // ステージ開始時：背景画像・ステージ名・BGM を反映する。
   applyStage(stage) {
     const def = this.getStageDef(stage);
     this.stageName = def.name || `Stage ${stage}`;
+    // ステージクリア時に取得できるアイテム名（stages.js の clearItem）。
+    this.stageClearItem = def.clearItem || '';
 
     if (def.image) {
       const src = `res/img/${def.image}`;
@@ -1167,6 +1183,9 @@ class GameEngine {
           // 撃破後は自動でステージ移動せず、ボスの位置にポータルを出現させる。
           if (this.boss.portal) {
             this.spawnPortal(this.boss.x, this.boss.y, this.boss.portal);
+            // ステージクリアテロップを表示開始（次ステージ移動まで表示）。
+            this.stageClearActive = true;
+            this.stageClearElapsed = 0;
           } else if (this.stage >= this.maxStages) {
             // ポータル未設定のフォールバック：最終ステージなら従来どおりクリアへ。
             this.transitionTo('gameclear');
@@ -1362,6 +1381,47 @@ class GameEngine {
     this.ctx.lineWidth = 6;
     this.ctx.strokeText(line2, cx, cy + 44);
     this.ctx.fillText(line2, cx, cy + 44);
+    this.ctx.restore();
+  }
+
+  // ボス撃破後のステージクリアテロップ。
+  // 最初の2秒は「ステージクリア」、その後は「ふぉうりん・らぶ」＋ clearItem を表示する。
+  drawStageClear() {
+    if (!this.stageClearActive) return;
+
+    const cx = this.canvas.width / 2;
+    const cy = this.canvas.height / 2;
+
+    this.ctx.save();
+    this.ctx.textAlign = 'center';
+    this.ctx.textBaseline = 'middle';
+    this.ctx.lineJoin = 'round';
+    this.ctx.strokeStyle = 'rgba(0,0,0,0.75)';
+    this.ctx.fillStyle = '#ffffff';
+
+    if (this.stageClearElapsed < 2) {
+      // フェーズ1：ステージクリア。
+      this.ctx.font = 'bold 72px "Trebuchet MS", "Segoe UI", sans-serif';
+      this.ctx.lineWidth = 8;
+      this.ctx.strokeText('ステージクリア', cx, cy);
+      this.ctx.fillText('ステージクリア', cx, cy);
+    } else {
+      // フェーズ2：タイトル＋取得アイテムのメッセージ。
+      // 2秒経過直後は軽くフェードインする。
+      const alpha = Math.max(0, Math.min(1, (this.stageClearElapsed - 2) / 0.4));
+      this.ctx.globalAlpha = alpha;
+
+      this.ctx.font = 'bold 60px "Trebuchet MS", "Segoe UI", sans-serif';
+      this.ctx.lineWidth = 8;
+      this.ctx.strokeText('ふぉうりん・らぶ', cx, cy - 44);
+      this.ctx.fillText('ふぉうりん・らぶ', cx, cy - 44);
+
+      this.ctx.font = 'bold 40px "Trebuchet MS", "Segoe UI", sans-serif';
+      this.ctx.lineWidth = 6;
+      const msg = this.stageClearItem || '';
+      this.ctx.strokeText(msg, cx, cy + 44);
+      this.ctx.fillText(msg, cx, cy + 44);
+    }
     this.ctx.restore();
   }
 
@@ -1574,6 +1634,7 @@ class GameEngine {
       if (state === this.stateMachine.states.playing) {
         this.drawLives();
         this.drawStageIntro();
+        this.drawStageClear();
       }
     }
 
