@@ -109,7 +109,7 @@ class TitleState extends BaseState {
   enter() {
     // 敵・弾・ボス・パーティクルなどゲーム中のオブジェクトを全てリセットする。
     this.game.resetGame();
-    this.game.showOverlay('GKT Shooter', 'Press Enter to start', true, true);
+    this.game.showOverlay('', 'Press Enter to start', true, true);
     this.game.playTitleBgm();
   }
 
