@@ -339,7 +339,7 @@ class GameEngine {
     this.backgroundScrollSpeed = 90;
     this.score = 0;
     this.stage = 1;
-    this.maxLives = 3;
+    this.maxLives = 100;
     this.lives = this.maxLives;
     this.maxStages = 3;
     // プレイヤーの生成・移動・状態管理は player.js に分離している。
@@ -735,8 +735,8 @@ class GameEngine {
     this.powerUps.push({
       x: spawnX,
       y: -30 - Math.random() * 40,
-      width: 48,
-      height: 48,
+      width: 96,
+      height: 96,
       vy: 110 + Math.random() * 30,
       vx: (Math.random() - 0.5) * 20,
       image: this.getImage(POWERUP_ICON_IMAGE)
@@ -753,8 +753,8 @@ class GameEngine {
     this.weaponItems.push({
       x: spawnX,
       y: -30 - Math.random() * 40,
-      width: 56,
-      height: 56,
+      width: 112,
+      height: 112,
       vy: 110 + Math.random() * 30,
       vx: (Math.random() - 0.5) * 20,
       weaponId,
