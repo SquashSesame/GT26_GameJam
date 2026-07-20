@@ -143,6 +143,7 @@ class PlayingState extends BaseState {
     this.game.updatePlayerBullets(dt);
     this.game.updateEnemyBullets(dt);
     this.game.updatePowerUps(dt);
+    this.game.updateWeaponItems(dt);
     this.game.updateEnemies(dt);
     this.game.updateBoss(dt);
     this.game.updateParticles(dt);
@@ -342,6 +343,9 @@ class GameEngine {
     this.stageState = 'wave';
     this.weaponLevel = 0;
     this.powerUps = [];
+    // 取得中のウェポン（WEAPONS のエントリ / null なら既定武器）と、落下中のウェポンアイテム。
+    this.currentWeapon = null;
+    this.weaponItems = [];
 
     // 出現テーブルは spawnTables.js で定義（グローバルの SPAWN_TABLES）。
     this.spawnTables = typeof SPAWN_TABLES !== 'undefined' ? SPAWN_TABLES : {};
@@ -405,6 +409,8 @@ class GameEngine {
     this.stageState = 'wave';
     this.weaponLevel = 0;
     this.powerUps = [];
+    this.currentWeapon = null;
+    this.weaponItems = [];
     this.hideBossWarning();
     if (this.spawnController) {
       this.spawnController.reset([]);
@@ -539,6 +545,7 @@ class GameEngine {
     this.particles = [];
     this.shotCooldown = 0;
     this.powerUps = [];
+    this.weaponItems = [];
     this.hideBossWarning();
     this.updateHud();
     this.spawnController.reset(this.getSpawnTable(newStage));
@@ -678,9 +685,67 @@ class GameEngine {
     });
   }
 
+  // 指定した id のウェポンアイテムを落下させる。
+  spawnWeaponItem(x, y, weaponId) {
+    const weapon = WEAPONS_BY_ID[weaponId];
+    if (!weapon) {
+      return;
+    }
+    const spawnX = Math.max(30, Math.min(this.canvas.width - 30, x));
+    this.weaponItems.push({
+      x: spawnX,
+      y: -30 - Math.random() * 40,
+      width: 56,
+      height: 56,
+      vy: 110 + Math.random() * 30,
+      vx: (Math.random() - 0.5) * 20,
+      weaponId,
+      type: weapon.type,
+      image: this.getImage(weapon.image)
+    });
+  }
+
+  // ランダムなウェポンアイテムを落下させる（敵撃破時のドロップなどに使う）。
+  spawnRandomWeaponItem(x, y) {
+    const weapon = WEAPONS[Math.floor(Math.random() * WEAPONS.length)];
+    this.spawnWeaponItem(x, y, weapon.id);
+  }
+
+  // ウェポンアイテム取得時に、プレイヤーの武器を切り替える。
+  setWeapon(weaponId) {
+    const weapon = WEAPONS_BY_ID[weaponId];
+    if (!weapon) {
+      return;
+    }
+    this.currentWeapon = weapon;
+    this.createParticles(this.player.x, this.player.y, '#ffd166');
+  }
+
+  // プレイヤーの弾を1発追加する。image を指定するとその画像で描画し、damage で威力を変えられる。
+  pushPlayerBullet(x, y, vx, vy, size, image = null, damage = 1) {
+    this.playerBullets.push({
+      x,
+      y,
+      width: size,
+      height: size,
+      vx,
+      vy,
+      rotation: Math.random() * Math.PI * 2,
+      image,
+      damage
+    });
+  }
+
   fireBullet() {
     if (this.stateMachine.currentState !== this.stateMachine.states.playing) return;
 
+    // ウェポンアイテムを取得している場合は、その武器タイプで発射する。
+    if (this.currentWeapon) {
+      this.fireWeapon(this.currentWeapon);
+      return;
+    }
+
+    // 既定武器（btama）：weaponLevel に応じた発射パターン。
     const patterns = {
       0: [[0]],
       1: [[-0.28, -1], [0.28, -1]],
@@ -695,18 +760,43 @@ class GameEngine {
     };
     const pattern = patterns[Math.min(this.weaponLevel, 3)] || patterns[3];
 
+    const originY = this.player.y - this.player.height / 2 - 10;
     pattern.forEach(([dx, dy = -1]) => {
-      const bullet = {
-        x: this.player.x,
-        y: this.player.y - this.player.height / 2 - 10,
-        width: 56,
-        height: 56,
-        vx: (dx || 0) * 180,
-        vy: 560 * (dy || 1),
-        rotation: Math.random() * Math.PI * 2
-      };
-      this.playerBullets.push(bullet);
+      this.pushPlayerBullet(this.player.x, originY, (dx || 0) * 180, 560 * (dy || 1), 56, null, 1);
     });
+  }
+
+  // 取得中のウェポンのタイプに応じて弾を発射する。弾には武器画像を持たせる。
+  fireWeapon(weapon) {
+    const img = this.getImage(weapon.image);
+    const x = this.player.x;
+    const y = this.player.y - this.player.height / 2 - 10;
+
+    switch (weapon.type) {
+      case 'straight':
+        // ball：速い直進弾を2発。
+        this.pushPlayerBullet(x - 16, y, 0, -640, 48, img, 1);
+        this.pushPlayerBullet(x + 16, y, 0, -640, 48, img, 1);
+        break;
+      case 'spread':
+        // car：5way 拡散。
+        [-0.5, -0.25, 0, 0.25, 0.5].forEach((a) => {
+          this.pushPlayerBullet(x, y, a * 280, -520, 56, img, 1);
+        });
+        break;
+      case 'heavy':
+        // billding：大型・低速・高威力の1発。
+        this.pushPlayerBullet(x, y, 0, -380, 128, img, 5);
+        break;
+      case 'bomb':
+        // atmbom：広範囲の大量弾（高威力）。
+        for (let i = -4; i <= 4; i += 1) {
+          this.pushPlayerBullet(x, y, i * 70, -500, 72, img, 2);
+        }
+        break;
+      default:
+        this.pushPlayerBullet(x, y, 0, -560, 56, img, 1);
+    }
   }
 
   // 中心 (x, y) から四方八方へ弾を放つ（弾幕用の全方位バースト）。
@@ -781,6 +871,32 @@ class GameEngine {
     });
   }
 
+  updateWeaponItems(dt) {
+    this.weaponItems = this.weaponItems.filter((item) => {
+      item.x += item.vx * dt;
+      item.y += item.vy * dt;
+      item.vx *= 0.98;
+      if (item.y > this.canvas.height + 30) {
+        return false;
+      }
+
+      const playerRect = {
+        x: this.player.x - this.player.width / 2,
+        y: this.player.y - this.player.height / 2,
+        width: this.player.width,
+        height: this.player.height
+      };
+
+      // 取得したらプレイヤーの武器を切り替える。
+      if (item.x < playerRect.x + playerRect.width && item.x + item.width > playerRect.x && item.y < playerRect.y + playerRect.height && item.y + item.height > playerRect.y) {
+        this.setWeapon(item.weaponId);
+        return false;
+      }
+
+      return true;
+    });
+  }
+
   updateEnemies(dt) {
     // 出現テーブルにしたがって敵をスポーンさせる（ウェーブ中のみ）。
     if (this.stageState === 'wave') {
@@ -826,7 +942,7 @@ class GameEngine {
           Math.abs(bullet.x - enemy.x) < (bullet.width + enemy.width) / 2 &&
           Math.abs(bullet.y - enemy.y) < (bullet.height + enemy.height) / 2
         ) {
-          enemy.hp -= 1;
+          enemy.hp -= bullet.damage || 1;
           enemy.flash = 1;
           bullet.y = -999;
           if (enemy.hp <= 0) {
@@ -834,6 +950,9 @@ class GameEngine {
             this.createParticles(enemy.x, enemy.y, enemy.color || '#ff6b6b');
             if (Math.random() < 0.22) {
               this.spawnPowerUp(enemy.x, enemy.y);
+            } else if (Math.random() < 0.18) {
+              // ウェポンアイテムをドロップする。
+              this.spawnRandomWeaponItem(enemy.x, enemy.y);
             }
             this.updateHud();
             return false;
@@ -906,7 +1025,7 @@ class GameEngine {
         Math.abs(bullet.x - this.boss.x) < (bullet.width + this.boss.width) / 2 &&
         Math.abs(bullet.y - this.boss.y) < (bullet.height + this.boss.height) / 2
       ) {
-        this.boss.hp -= 1;
+        this.boss.hp -= bullet.damage || 1;
         this.boss.flash = 1;
         bullet.y = -999;
         this.createParticles(this.boss.x, this.boss.y, '#ffd166');
@@ -1093,9 +1212,10 @@ class GameEngine {
   }
 
   drawPlayerBullets() {
-    const img = this.bulletImage;
     for (const bullet of this.playerBullets) {
-      if (img.complete && img.naturalWidth) {
+      // 弾ごとの画像（ウェポン弾）があればそれを、なければ既定の弾画像を使う。
+      const img = bullet.image || this.bulletImage;
+      if (img && img.complete && img.naturalWidth) {
         this.ctx.save();
         this.ctx.translate(bullet.x, bullet.y);
         this.ctx.rotate(bullet.rotation);
@@ -1112,6 +1232,25 @@ class GameEngine {
     for (const item of this.powerUps) {
       this.ctx.fillStyle = item.kind === 'two' ? '#7dff9a' : item.kind === 'three' ? '#5cf2ff' : '#ffd166';
       this.ctx.fillRect(item.x - item.width / 2, item.y - item.height / 2, item.width, item.height);
+    }
+  }
+
+  // ウェポンアイテムを描画する。画像が未ロードならタイプ別の色付き矩形でフォールバックする。
+  drawWeaponItems() {
+    const fallbackColors = { straight: '#ffd166', spread: '#5cf2ff', heavy: '#c77dff', bomb: '#ff6b6b' };
+    for (const item of this.weaponItems) {
+      const img = item.image;
+      const x = item.x - item.width / 2;
+      const y = item.y - item.height / 2;
+      if (img && img.complete && img.naturalWidth) {
+        this.ctx.drawImage(img, x, y, item.width, item.height);
+      } else {
+        this.ctx.fillStyle = fallbackColors[item.type] || '#ffd166';
+        this.ctx.fillRect(x, y, item.width, item.height);
+        this.ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+        this.ctx.lineWidth = 2;
+        this.ctx.strokeRect(x, y, item.width, item.height);
+      }
     }
   }
 
@@ -1185,6 +1324,7 @@ class GameEngine {
       this.drawBackground(dt);
       this.drawParticles();
       this.drawPowerUps();
+      this.drawWeaponItems();
       this.drawEnemies();
       this.drawBoss();
       this.drawEnemyBullets();
