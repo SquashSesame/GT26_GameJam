@@ -171,6 +171,7 @@ class PlayingState extends BaseState {
     this.game.updateEnemies(dt);
     this.game.updateBoss(dt);
     this.game.updateParticles(dt);
+    this.game.updateExplosions(dt);
     this.game.checkPlayerHit();
   }
 
@@ -332,6 +333,8 @@ class GameEngine {
     this.bulletImage.src = 'res/img/wep_btama.png';
     this.enemyBulletImage = new Image();
     this.enemyBulletImage.src = 'res/img/wep_btama.png';
+    this.explosionImage = new Image();
+    this.explosionImage.src = 'res/img/sys_explotion_4x1.png';
     this.companyLogoImage = new Image();
     this.companyLogoImage.src = 'res/img/logo_gamejam.png';
     // 出現テーブルで image 指定された画像（敵・ボス）を、ファイル名ごとにキャッシュして使い回す。
@@ -364,6 +367,7 @@ class GameEngine {
     this.enemies = [];
     this.boss = null;
     this.particles = [];
+    this.explosions = [];
     this.shotCooldown = 0;
     this.lastFrame = performance.now();
     this.stageState = 'wave';
@@ -448,6 +452,7 @@ class GameEngine {
     this.enemies = [];
     this.boss = null;
     this.particles = [];
+    this.explosions = [];
     this.shotCooldown = 0;
     this.stageState = 'wave';
     this.weaponLevel = 0;
@@ -592,6 +597,7 @@ class GameEngine {
     this.enemies = [];
     this.boss = null;
     this.particles = [];
+    this.explosions = [];
     this.shotCooldown = 0;
     this.powerUps = [];
     this.weaponItems = [];
@@ -769,6 +775,83 @@ class GameEngine {
         life: 30 + Math.random() * 20,
         color
       });
+    }
+  }
+
+  // 爆発エフェクトを1つ生成する。
+  // (x, y) を中心に、count 個のエフェクト要素を range（半径px）内のランダム位置へ、
+  // duration（秒）の間に散らして表示する。各要素は4コマを0.1秒ごとに再生して終了。
+  // 全要素の再生が終わると、このエフェクトオブジェクトは自動削除される。
+  spawnExplosion(x, y, options = {}) {
+    const count = options.count != null ? options.count : 8;
+    const range = options.range != null ? options.range : 90;
+    const duration = options.duration != null ? options.duration : 0.6;
+    const size = options.size != null ? options.size : 96;
+
+    const elements = [];
+    for (let i = 0; i < count; i += 1) {
+      // 中心から range 内のランダムな位置。
+      const angle = Math.random() * Math.PI * 2;
+      const dist = Math.random() * range;
+      elements.push({
+        x: x + Math.cos(angle) * dist,
+        y: y + Math.sin(angle) * dist,
+        size,
+        // duration の間に散らして表示を開始する。
+        startDelay: Math.random() * duration,
+        frame: 0,
+        frameTimer: 0,
+        started: false,
+        done: false
+      });
+    }
+    this.explosions.push({ elapsed: 0, elements });
+  }
+
+  updateExplosions(dt) {
+    const frameDuration = 0.1; // 1コマ0.1秒。
+    this.explosions = this.explosions.filter((fx) => {
+      fx.elapsed += dt;
+      let allDone = true;
+      for (const el of fx.elements) {
+        if (el.done) continue;
+        if (!el.started) {
+          if (fx.elapsed >= el.startDelay) {
+            el.started = true;
+          } else {
+            allDone = false;
+            continue;
+          }
+        }
+        el.frameTimer += dt;
+        while (el.frameTimer >= frameDuration && !el.done) {
+          el.frameTimer -= frameDuration;
+          el.frame += 1;
+          // 4コマ再生し終えたら要素終了。
+          if (el.frame >= 4) {
+            el.done = true;
+          }
+        }
+        if (!el.done) {
+          allDone = false;
+        }
+      }
+      // 全要素の再生が終わったらエフェクトを削除する。
+      return !allDone;
+    });
+  }
+
+  drawExplosions() {
+    const img = this.explosionImage;
+    if (!img.complete || !img.naturalWidth) return;
+    const frameCount = 4;
+    const fw = img.naturalWidth / frameCount;
+    const fh = img.naturalHeight;
+    for (const fx of this.explosions) {
+      for (const el of fx.elements) {
+        if (!el.started || el.done) continue;
+        this.ctx.drawImage(img, el.frame * fw, 0, fw, fh, el.x - el.size / 2, el.y - el.size / 2, el.size, el.size);
+      }
     }
   }
 
@@ -1090,6 +1173,8 @@ class GameEngine {
           if (enemy.hp <= 0) {
             this.score += enemy.score || 100;
             this.createParticles(enemy.x, enemy.y, enemy.color || '#ff6b6b');
+            // 撃破時に爆発エフェクトを表示する。
+            this.spawnExplosion(enemy.x, enemy.y, { count: 4, range: enemy.width / 2, duration: 0.25, size: enemy.width * 0.8 });
             // アイテムのドロップは出現テーブル（item エントリ）で管理する（ランダムドロップは廃止）。
             this.updateHud();
             return false;
@@ -1180,6 +1265,10 @@ class GameEngine {
           this.score += 1000;
           this.updateHud();
           this.createParticles(this.boss.x, this.boss.y, '#7dff9a');
+          // ボス撃破時は大きめの爆発エフェクトを表示する（数・時間・サイズを1.5倍に）。
+          this.spawnExplosion(this.boss.x, this.boss.y, { count: 24, range: this.boss.width / 2, duration: 1.5, size: this.boss.width * 0.9 });
+          // ボス撃破と同時に、画面上のボスが放出した弾（敵弾）を全て消す。
+          this.enemyBullets = [];
           // 撃破後は自動でステージ移動せず、ボスの位置にポータルを出現させる。
           if (this.boss.portal) {
             this.spawnPortal(this.boss.x, this.boss.y, this.boss.portal);
@@ -1629,6 +1718,7 @@ class GameEngine {
       this.drawEnemyBullets();
       this.drawPlayerBullets();
       this.drawPlayer();
+      this.drawExplosions();
 
       // ゲーム中のみ残機アイコンとステージ開始テロップを表示する。
       if (state === this.stateMachine.states.playing) {
