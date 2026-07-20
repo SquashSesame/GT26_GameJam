@@ -1,17 +1,17 @@
-// パワーアップ（強化アイテム）テーブル。取得するとプレイヤーの発射方向と攻撃力が変わる。
+// パワーアップ（強化アイテム）テーブル。取得するとプレイヤーの発射方向（way）が変わる。
+// 攻撃力はウェポン側（weapons.js の power）で管理する。
 // game.js より前に読み込むこと。グローバルの POWERUPS / POWERUPS_BY_ID を参照する。
 //
 // 各エントリのフィールド:
 //   id:       パワーアップの識別子（文字列 / 出現テーブルの指定に使う）
-//   image:    アイテムの描画に使う画像ファイル名（res/img 内 / PNG）
-//             ※未配置の画像は色付き矩形でフォールバック描画される。
-//   power:    攻撃力（数字 / 取得後のプレイヤー弾1発のダメージ）
 //   category: 発射方向のカテゴリ（文字列 / game.js の FIRE_PATTERNS のキー）
-//             1way … 単発 / 2way / 3way / 5way … 前方への拡散数
+//             1way … 単発 / 2way / 3way / 4way / 5way … 前方への拡散数
 const POWERUPS = [
-  { id: 'spread2', image: 'chocolate.png',    power: 1, category: '2way' },
-  { id: 'spread3', image: 'glass_bottle.png', power: 2, category: '3way' },
-  { id: 'spread5', image: 'brick.png',        power: 3, category: '5way' }
+  { id: 'spread1', category: '1way' },
+  { id: 'spread2', category: '2way' },
+  { id: 'spread3', category: '3way' },
+  { id: 'spread4', category: '4way' },
+  { id: 'spread5', category: '5way' }
 ];
 
 // id からパワーアップ定義を引くためのマップ。

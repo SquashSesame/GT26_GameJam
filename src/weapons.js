@@ -8,17 +8,18 @@
 //   type:  発射パターンの種類（文字列 / game.js の fireWeapon が解釈する）
 //          straight … 直進弾を2発 / spread … 5way拡散 / heavy … 大型・低速・高威力 /
 //          bomb      … 広範囲の大量弾
+//   power: 攻撃力（数字 / このウェポンで撃った弾1発のダメージ）
 const WEAPONS = [
-  { id: 'ball',     image: 'wep_baseball.png', type: 'straight' },
-  { id: 'car',      image: 'wep_bullet_usa_car.png',      type: 'spread' },
-  { id: 'building', image: 'wep_building.png', type: 'heavy' },
-  { id: 'nuclear',   image: 'wep_nuclear.png',   type: 'bomb' },
-  { id: 'bills',   image: 'wep_bills.png',   type: 'bomb' },
-  { id: 'brick',   image: 'wep_brick.png',   type: 'bomb' },
-  { id: 'cat',   image: 'wep_cat.png',   type: 'bomb' },
-  { id: 'chocolate',   image: 'wep_chocolate.png',   type: 'bomb' },
-  { id: 'glass_bottle',   image: 'wep_glass_bottle.png',   type: 'bomb' },
-  { id: 'trump_tower',   image: 'wep_trump_tower.png',   type: 'bomb' }
+  { id: 'ball',         image: 'wep_baseball.png',       type: 'straight', power: 1 },
+  { id: 'car',          image: 'wep_bullet_usa_car.png', type: 'spread',   power: 2 },
+  { id: 'building',     image: 'wep_building.png',       type: 'heavy',    power: 5 },
+  { id: 'nuclear',      image: 'wep_nuclear.png',        type: 'bomb',     power: 5 },
+  { id: 'bills',        image: 'wep_bills.png',          type: 'bomb',     power: 2 },
+  { id: 'brick',        image: 'wep_brick.png',          type: 'bomb',     power: 3 },
+  { id: 'cat',          image: 'wep_cat.png',            type: 'bomb',     power: 2 },
+  { id: 'chocolate',    image: 'wep_chocolate.png',      type: 'bomb',     power: 1 },
+  { id: 'glass_bottle', image: 'wep_glass_bottle.png',   type: 'bomb',     power: 2 },
+  { id: 'trump_tower',  image: 'wep_trump_tower.png',    type: 'bomb',     power: 5 }
 ];
 
 // id からウェポン定義を引くためのマップ。

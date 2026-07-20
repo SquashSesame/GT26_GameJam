@@ -17,8 +17,12 @@ const FIRE_PATTERNS = {
   '1way': [0],
   '2way': [-0.28, 0.28],
   '3way': [-0.45, 0, 0.45],
+  '4way': [-0.6, -0.2, 0.2, 0.6],
   '5way': [-0.7, -0.35, 0, 0.35, 0.7]
 };
+
+// パワーアップアイテム共通のアイコン画像。
+const POWERUP_ICON_IMAGE = 'wep_bills.png';
 
 // ゲーム全体の画面状態（ステート）の基底クラス。
 // 各画面はこれを継承し、必要なハンドラ（enter/update/handleKeyDown など）だけを上書きする。
@@ -310,7 +314,7 @@ class GameEngine {
     this.keys = {}; 
     this.mouse = { x: canvas.width / 2, y: canvas.height - 120 };
     this.backgroundImage = new Image();
-    this.backgroundImage.src = 'res/img/street.png';
+    this.backgroundImage.src = 'res/img/bg_street.png';
     this.playerImage = new Image();
     this.playerImage.src = 'res/img/player_top.png';
     this.bulletImage = new Image();
@@ -352,7 +356,9 @@ class GameEngine {
     this.shotCooldown = 0;
     this.lastFrame = performance.now();
     this.stageState = 'wave';
-    // 発射方向カテゴリ（FIRE_PATTERNS のキー）と攻撃力。パワーアップ取得で更新する。
+    // 武器レベル（POWERUPS の添字 / パワーアップ取得で増え、被弾で減る）。
+    // 発射方向カテゴリはこのレベルから決まる。攻撃力はウェポンで変化（既定1）。
+    this.weaponLevel = 0;
     this.playerCategory = '1way';
     this.playerPower = 1;
     this.powerUps = [];
@@ -363,6 +369,10 @@ class GameEngine {
     // 出現テーブルは spawnTables.js で定義（グローバルの SPAWN_TABLES）。
     this.spawnTables = typeof SPAWN_TABLES !== 'undefined' ? SPAWN_TABLES : {};
     this.spawnController = new SpawnController(this);
+
+    // ステージテーブルは stages.js で定義（グローバルの STAGES_BY_NUMBER）。
+    this.stages = typeof STAGES_BY_NUMBER !== 'undefined' ? STAGES_BY_NUMBER : {};
+    this.stageName = '';
 
     this.stateMachine = new GameStateMachine(this);
     this.currentState = null;
@@ -420,6 +430,7 @@ class GameEngine {
     this.particles = [];
     this.shotCooldown = 0;
     this.stageState = 'wave';
+    this.weaponLevel = 0;
     this.playerCategory = '1way';
     this.playerPower = 1;
     this.powerUps = [];
@@ -560,9 +571,30 @@ class GameEngine {
     this.shotCooldown = 0;
     this.powerUps = [];
     this.weaponItems = [];
+    // ステージテーブルにしたがい、背景画像とステージ名を設定する。
+    this.applyStage(newStage);
     this.hideBossWarning();
     this.updateHud();
     this.spawnController.reset(this.getSpawnTable(newStage));
+  }
+
+  // ステージ番号に対応するステージ定義を返す（未定義なら既定値でフォールバック）。
+  getStageDef(stage) {
+    return this.stages[stage] || { stage, name: `Stage ${stage}`, image: 'street.png' };
+  }
+
+  // ステージ開始時：背景画像とステージ名を反映する。
+  applyStage(stage) {
+    const def = this.getStageDef(stage);
+    this.stageName = def.name || `Stage ${stage}`;
+    if (def.image) {
+      const src = `res/img/${def.image}`;
+      // 同じ画像なら再ロードしない（読み込み中の背景チラつきを避ける）。
+      if (!this.backgroundImage.src.endsWith(src)) {
+        this.backgroundImage = new Image();
+        this.backgroundImage.src = src;
+      }
+    }
   }
 
   startGame() {
@@ -686,22 +718,19 @@ class GameEngine {
   }
 
   // 出現テーブルのアイテムエントリからアイテムを1つ落下させる。
-  // entry: { item: 'weapon'|'powerup', id: <文字列>, x?: <px / 省略時は横位置ランダム> }
+  // entry: { item: 'weapon'|'powerup', id?: <文字列>, x?: <px / 省略時は横位置ランダム> }
+  // powerup はレベル制のため id は不要（どれを取っても武器レベルが1上がる）。
   spawnItemEntry(entry) {
     const x = entry.x != null ? entry.x : 60 + Math.random() * (this.canvas.width - 120);
     if (entry.item === 'weapon') {
       this.spawnWeaponItem(x, entry.id);
     } else if (entry.item === 'powerup') {
-      this.spawnPowerUpItem(x, entry.id);
+      this.spawnPowerUpItem(x);
     }
   }
 
-  // 指定した id のパワーアップアイテムを画面上から落下させる。
-  spawnPowerUpItem(x, powerupId) {
-    const powerup = POWERUPS_BY_ID[powerupId];
-    if (!powerup) {
-      return;
-    }
+  // パワーアップアイテムを画面上から落下させる（共通アイコンで描画）。
+  spawnPowerUpItem(x) {
     const spawnX = Math.max(30, Math.min(this.canvas.width - 30, x));
     this.powerUps.push({
       x: spawnX,
@@ -710,10 +739,7 @@ class GameEngine {
       height: 48,
       vy: 110 + Math.random() * 30,
       vx: (Math.random() - 0.5) * 20,
-      powerupId: powerup.id,
-      category: powerup.category,
-      power: powerup.power,
-      image: this.getImage(powerup.image)
+      image: this.getImage(POWERUP_ICON_IMAGE)
     });
   }
 
@@ -737,29 +763,41 @@ class GameEngine {
     });
   }
 
-  // パワーアップ取得時：発射方向カテゴリと攻撃力を反映する。
-  setPowerUp(powerupId) {
-    const powerup = POWERUPS_BY_ID[powerupId];
-    if (!powerup) {
-      return;
-    }
-    this.playerCategory = powerup.category;
-    this.playerPower = powerup.power;
+  // 武器レベル（POWERUPS の添字）から発射方向カテゴリを決定する。
+  // レベルは 0（1つ目 / 最低）〜 POWERUPS.length-1（テーブル最大値）に丸める。
+  applyWeaponLevel() {
+    const maxLevel = Math.max(0, POWERUPS.length - 1);
+    this.weaponLevel = Math.max(0, Math.min(maxLevel, this.weaponLevel));
+    const def = POWERUPS[this.weaponLevel];
+    this.playerCategory = def ? def.category : '1way';
+  }
+
+  // パワーアップ取得時：武器レベルを1上げる（最大はテーブルの最大値）。
+  gainWeaponLevel() {
+    this.weaponLevel += 1;
+    this.applyWeaponLevel();
     this.createParticles(this.player.x, this.player.y, '#7dff9a');
   }
 
-  // ウェポンアイテム取得時：プレイヤーの武器を切り替える。
+  // 被弾時：武器レベルを1下げる（最低は1つ目）。
+  loseWeaponLevel() {
+    this.weaponLevel -= 1;
+    this.applyWeaponLevel();
+  }
+
+  // ウェポンアイテム取得時：プレイヤーの武器を切り替え、攻撃力を反映する。
   setWeapon(weaponId) {
     const weapon = WEAPONS_BY_ID[weaponId];
     if (!weapon) {
       return;
     }
     this.currentWeapon = weapon;
+    this.playerPower = weapon.power != null ? weapon.power : 1;
     this.createParticles(this.player.x, this.player.y, '#ffd166');
   }
 
   // プレイヤーの弾を1発追加する。image を指定するとその画像で描画する。
-  // ダメージは現在の攻撃力（playerPower / パワーアップで変化）を用いる。
+  // ダメージは現在の攻撃力（playerPower / ウェポンで変化）を用いる。
   pushPlayerBullet(x, y, vx, vy, size, image = null) {
     this.playerBullets.push({
       x,
@@ -888,7 +926,7 @@ class GameEngine {
 
       // 取得したら発射方向カテゴリと攻撃力を反映する。
       if (item.x < playerRect.x + playerRect.width && item.x + item.width > playerRect.x && item.y < playerRect.y + playerRect.height && item.y + item.height > playerRect.y) {
-        this.setPowerUp(item.powerupId);
+        this.gainWeaponLevel();
         return false;
       }
 
@@ -1091,6 +1129,8 @@ class GameEngine {
     if (this.player.invulnerable) return;
 
     this.lives -= 1;
+    // 被弾で武器レベルが1下がる（最低は1つ目）。
+    this.loseWeaponLevel();
     this.playerFlash = 1;
     this.player.transitionTo('invulnerable');
     this.createParticles(this.player.x, this.player.y, '#5cf2ff');

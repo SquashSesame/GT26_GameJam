@@ -39,7 +39,7 @@ const SPAWN_TABLES = {
     { delay: 12.8, type: 'grunt', count: 10, hp: 2, algorithm: 'bounce', image: 'enemy_hotdog_stand.png' },
     { delay: 14.0, type: 'grunt', count: 10, hp: 2, algorithm: 'sine', image: 'enemy_hotdog_stand.png' },
     { delay: 16.0, type: 'diver', count: 10, hp: 3, algorithm: 'zigzag', image: 'enemy_hotdog_stand.png' },
-    { delay: 18.0, boss: true, hp: 100, image: 'boss_cat_2.png' }
+    { delay: 18.0, boss: true, hp: 100, image: 'boss_trump_robot.png' }
   ],
   2: [
     { delay: 0.8, type: 'grunt', count: 7, hp: 2, algorithm: 'sine', image: 'enemy_hotdog_stand.png' },
@@ -48,7 +48,7 @@ const SPAWN_TABLES = {
     { delay: 8.0, type: 'diver', count: 5, hp: 3, algorithm: 'straight', params: { speedY: 130 }, image: 'enemy_hotdog_stand.png' },
     { delay: 9.0, item: 'weapon', id: 'building' },
     { delay: 11.0, type: 'tank', count: 2, hp: 6, algorithm: 'bounce', image: 'enemy_hotdog_stand.png' },
-    { delay: 16.0, boss: true, hp: 150, image: 'boss_cat_2.png' }
+    { delay: 16.0, boss: true, hp: 200, image: 'boss_russia.png' }
   ],
   3: [
     { delay: 0.6, type: 'diver', count: 8, hp: 3, algorithm: 'sine', image: 'enemy_hotdog_stand.png' },
@@ -57,7 +57,7 @@ const SPAWN_TABLES = {
     { delay: 8.0, type: 'diver', count: 6, hp: 3, algorithm: 'zigzag', image: 'enemy_hotdog_stand.png' },
     { delay: 10.0, item: 'powerup', id: 'spread5' },
     { delay: 12.0, type: 'tank', count: 3, hp: 5, algorithm: 'straight', params: { speedY: 150 }, image: 'enemy_hotdog_stand.png' },
-    { delay: 18.0, boss: true, hp: 200, image: 'boss_cat_2.png' }
+    { delay: 18.0, boss: true, hp: 400, image: 'boss_lastboss_spaceship.png' }
   ]
 };
 
