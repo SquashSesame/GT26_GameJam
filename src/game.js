@@ -140,6 +140,11 @@ class PlayingState extends BaseState {
       return;
     }
 
+    // ステージ開始テロップの残り時間を減らす。
+    if (this.game.stageIntroTimer > 0) {
+      this.game.stageIntroTimer = Math.max(0, this.game.stageIntroTimer - dt);
+    }
+
     this.game.player.update(dt);
 
     // プレイヤーの被弾フラッシュを時間で減衰させる。
@@ -157,6 +162,7 @@ class PlayingState extends BaseState {
     this.game.updateEnemyBullets(dt);
     this.game.updatePowerUps(dt);
     this.game.updateWeaponItems(dt);
+    this.game.updatePortals(dt);
     this.game.updateEnemies(dt);
     this.game.updateBoss(dt);
     this.game.updateParticles(dt);
@@ -316,7 +322,7 @@ class GameEngine {
     this.backgroundImage = new Image();
     this.backgroundImage.src = 'res/img/bg_street.png';
     this.playerImage = new Image();
-    this.playerImage.src = 'res/img/player_top.png';
+    this.playerImage.src = 'res/img/player_throw_2x1.png';
     this.bulletImage = new Image();
     this.bulletImage.src = 'res/img/wep_btama.png';
     this.enemyBulletImage = new Image();
@@ -365,6 +371,8 @@ class GameEngine {
     // 取得中のウェポン（WEAPONS のエントリ / null なら既定武器）と、落下中のウェポンアイテム。
     this.currentWeapon = null;
     this.weaponItems = [];
+    // 出現中のポータルアイコン。
+    this.portals = [];
 
     // 出現テーブルは spawnTables.js で定義（グローバルの SPAWN_TABLES）。
     this.spawnTables = typeof SPAWN_TABLES !== 'undefined' ? SPAWN_TABLES : {};
@@ -373,6 +381,9 @@ class GameEngine {
     // ステージテーブルは stages.js で定義（グローバルの STAGES_BY_NUMBER）。
     this.stages = typeof STAGES_BY_NUMBER !== 'undefined' ? STAGES_BY_NUMBER : {};
     this.stageName = '';
+    // ステージ開始テロップ（残り表示時間 / 秒）。
+    this.stageIntroTimer = 0;
+    this.stageIntroDuration = 2.5;
 
     this.stateMachine = new GameStateMachine(this);
     this.currentState = null;
@@ -436,6 +447,7 @@ class GameEngine {
     this.powerUps = [];
     this.currentWeapon = null;
     this.weaponItems = [];
+    this.portals = [];
     this.hideBossWarning();
     if (this.spawnController) {
       this.spawnController.reset([]);
@@ -571,8 +583,14 @@ class GameEngine {
     this.shotCooldown = 0;
     this.powerUps = [];
     this.weaponItems = [];
+    this.portals = [];
+    // ステージ開始時はプレイヤーを画面下部中央に配置する。
+    this.player.x = this.canvas.width / 2;
+    this.player.y = this.canvas.height - 110;
     // ステージテーブルにしたがい、背景画像とステージ名を設定する。
     this.applyStage(newStage);
+    // ステージ開始テロップを表示開始する。
+    this.stageIntroTimer = this.stageIntroDuration;
     this.hideBossWarning();
     this.updateHud();
     this.spawnController.reset(this.getSpawnTable(newStage));
@@ -702,7 +720,7 @@ class GameEngine {
     this.enemies.push(enemy);
   }
 
-  spawnBoss(image = null, hp = null) {
+  spawnBoss(image = null, hp = null, portalId = null) {
     // ボスの表示・当たり判定サイズ（基準 72px の 4 倍）。
     const size = 72 * 4;
     this.boss = {
@@ -717,7 +735,9 @@ class GameEngine {
       // ダメージ時の白フラッシュ量（1=真っ白 → 0=通常）。
       flash: 0,
       // 出現テーブルで指定されたボス画像（未指定なら null。その場合は矩形で描画）。
-      image
+      image,
+      // 撃破時にこの位置へ出現させるポータルの id（portals.js / 未指定なら null）。
+      portal: portalId
     };
   }
 
@@ -735,15 +755,39 @@ class GameEngine {
   }
 
   // 出現テーブルのアイテムエントリからアイテムを1つ落下させる。
-  // entry: { item: 'weapon'|'powerup', id?: <文字列>, x?: <px / 省略時は横位置ランダム> }
+  // entry: { item: 'weapon'|'powerup'|'portal', id?: <文字列>, x?: <px / 省略時は横位置ランダム> }
   // powerup はレベル制のため id は不要（どれを取っても武器レベルが1上がる）。
+  // portal は portals.js の id を指定する。
   spawnItemEntry(entry) {
     const x = entry.x != null ? entry.x : 60 + Math.random() * (this.canvas.width - 120);
     if (entry.item === 'weapon') {
       this.spawnWeaponItem(x, entry.id);
     } else if (entry.item === 'powerup') {
       this.spawnPowerUpItem(x);
+    } else if (entry.item === 'portal') {
+      this.spawnPortal(x, 200, entry.id);
     }
+  }
+
+  // 指定した id のポータルアイコンを (x, y) に出現させる（静止・移動しない）。
+  // 取得するとポータルの stage で指定したステージへ移動する。
+  spawnPortal(x, y, portalId) {
+    const portal = PORTALS_BY_ID[portalId];
+    if (!portal) {
+      return;
+    }
+    const px = Math.max(60, Math.min(this.canvas.width - 60, x));
+    const py = Math.max(60, Math.min(this.canvas.height - 60, y));
+    this.portals.push({
+      x: px,
+      y: py,
+      width: 120,
+      height: 120,
+      portalId: portal.id,
+      name: portal.name,
+      stage: portal.stage,
+      image: this.getImage(portal.image)
+    });
   }
 
   // パワーアップアイテムを画面上から落下させる（共通アイコンで描画）。
@@ -941,6 +985,42 @@ class GameEngine {
     });
   }
 
+  updatePortals(dt) {
+    const playerRect = {
+      x: this.player.x - this.player.width / 2,
+      y: this.player.y - this.player.height / 2,
+      width: this.player.width,
+      height: this.player.height
+    };
+
+    this.portals = this.portals.filter((portal) => {
+      // ポータルは移動しない。プレイヤーが重なったらステージ移動する。
+      const px = portal.x - portal.width / 2;
+      const py = portal.y - portal.height / 2;
+      if (px < playerRect.x + playerRect.width && px + portal.width > playerRect.x &&
+          py < playerRect.y + playerRect.height && py + portal.height > playerRect.y) {
+        this.enterPortal(portal);
+        return false;
+      }
+      return true;
+    });
+  }
+
+  // ポータル取得時：ポータルの stage で指定したステージへフェードで移動する。
+  // stage が maxStages を超える場合はゲームクリアへ。
+  enterPortal(portal) {
+    if (this.isTransitioning) {
+      return;
+    }
+    const target = portal.stage;
+    if (target != null && target <= this.maxStages) {
+      this.transitionToScreen('playing', { stage: target });
+    } else {
+      this.fadeOutBgm();
+      this.transitionToScreen('gameclear');
+    }
+  }
+
   updateEnemies(dt) {
     // 出現テーブルにしたがって敵をスポーンさせる（ウェーブ中のみ）。
     if (this.stageState === 'wave') {
@@ -1027,13 +1107,15 @@ class GameEngine {
     const image = this.getImage(entry.image);
     // テーブルで hp が指定されていればそれをボスに反映する（未指定なら null）。
     const bossHp = entry.hp != null ? entry.hp : null;
+    // 撃破時に出現させるポータルの id（テーブルの boss エントリの portal）。
+    const bossPortal = entry.portal || null;
     // ボス出現前は「WARNING」の帯テロップを画面中央に表示する（背景の暗転はしない）。
     this.showBossWarning();
     // ボス出現の予告と同時にボスBGMへクロスフェードする。
     this.playBossBgm();
     setTimeout(() => {
       this.hideBossWarning();
-      this.spawnBoss(image, bossHp);
+      this.spawnBoss(image, bossHp, bossPortal);
     }, 1000);
   }
 
@@ -1069,15 +1151,19 @@ class GameEngine {
         bullet.y = -999;
         this.createParticles(this.boss.x, this.boss.y, '#ffd166');
         if (this.boss.hp <= 0) {
-          this.boss.alive = false;
           this.score += 1000;
           this.updateHud();
           this.createParticles(this.boss.x, this.boss.y, '#7dff9a');
-          if (this.stage >= this.maxStages) {
+          // 撃破後は自動でステージ移動せず、ボスの位置にポータルを出現させる。
+          if (this.boss.portal) {
+            this.spawnPortal(this.boss.x, this.boss.y, this.boss.portal);
+          } else if (this.stage >= this.maxStages) {
+            // ポータル未設定のフォールバック：最終ステージなら従来どおりクリアへ。
             this.transitionTo('gameclear');
           } else {
             this.transitionTo('stageClear');
           }
+          this.boss.alive = false;
         }
       }
     }
@@ -1212,16 +1298,61 @@ class GameEngine {
     const margin = 16;
     const y = this.canvas.height - margin - size;
 
+    // プレイヤー画像は横2コマのスプライトシートなので、1コマ目だけをアイコンに使う。
+    const fw = img.naturalWidth ? img.naturalWidth / 2 : 0;
+    const fh = img.naturalHeight;
+
     for (let i = 0; i < this.lives; i += 1) {
       // 右詰めで左方向へ並べる。
       const x = this.canvas.width - margin - size - i * (size + gap);
       if (img.complete && img.naturalWidth) {
-        this.ctx.drawImage(img, x, y, size, size);
+        this.ctx.drawImage(img, 0, 0, fw, fh, x, y, size, size);
       } else {
         this.ctx.fillStyle = '#59f2ff';
         this.ctx.fillRect(x, y, size, size);
       }
     }
+  }
+
+  // ステージ開始テロップ（「ステージX」＋1行下にステージ名）を画面中央に表示する。
+  drawStageIntro() {
+    if (this.stageIntroTimer <= 0) return;
+
+    const d = this.stageIntroDuration;
+    const t = this.stageIntroTimer;
+    const fade = 0.4;
+    // 表示開始でフェードイン、終了間際でフェードアウト。
+    let alpha = 1;
+    if (t > d - fade) {
+      alpha = (d - t) / fade;
+    } else if (t < fade) {
+      alpha = t / fade;
+    }
+    alpha = Math.max(0, Math.min(1, alpha));
+
+    const cx = this.canvas.width / 2;
+    const cy = this.canvas.height / 2;
+    const line1 = `ステージ${this.stage}`;
+    const line2 = this.stageName || '';
+
+    this.ctx.save();
+    this.ctx.globalAlpha = alpha;
+    this.ctx.textAlign = 'center';
+    this.ctx.textBaseline = 'middle';
+    this.ctx.lineJoin = 'round';
+    this.ctx.strokeStyle = 'rgba(0,0,0,0.75)';
+    this.ctx.fillStyle = '#ffffff';
+
+    this.ctx.font = 'bold 64px "Trebuchet MS", "Segoe UI", sans-serif';
+    this.ctx.lineWidth = 8;
+    this.ctx.strokeText(line1, cx, cy - 44);
+    this.ctx.fillText(line1, cx, cy - 44);
+
+    this.ctx.font = 'bold 48px "Trebuchet MS", "Segoe UI", sans-serif';
+    this.ctx.lineWidth = 6;
+    this.ctx.strokeText(line2, cx, cy + 44);
+    this.ctx.fillText(line2, cx, cy + 44);
+    this.ctx.restore();
   }
 
   drawPlayer() {
@@ -1231,9 +1362,11 @@ class GameEngine {
 
     const img = this.playerImage;
     if (img.complete && img.naturalWidth) {
+      // player_throw_2x1.png は横2コマのスプライトシート。0.2秒ごとに1↔2コマをループ。
+      const frame = Math.floor(performance.now() / 200) % 2;
       this.ctx.save();
       this.ctx.translate(this.player.x, this.player.y);
-      this.drawImageFlash(img, -this.player.width / 2, -this.player.height / 2, this.player.width, this.player.height, this.playerFlash);
+      this.drawSpriteFlash(img, frame, 2, -this.player.width / 2, -this.player.height / 2, this.player.width, this.player.height, this.playerFlash);
       this.ctx.restore();
       return;
     }
@@ -1305,6 +1438,26 @@ class GameEngine {
     }
   }
 
+  // ポータルアイコンを描画する。画像が未ロードなら円のフォールバックで描画する。
+  drawPortals() {
+    for (const portal of this.portals) {
+      const img = portal.image;
+      const x = portal.x - portal.width / 2;
+      const y = portal.y - portal.height / 2;
+      if (img && img.complete && img.naturalWidth) {
+        this.ctx.drawImage(img, x, y, portal.width, portal.height);
+      } else {
+        this.ctx.save();
+        this.ctx.strokeStyle = '#a970ff';
+        this.ctx.lineWidth = 4;
+        this.ctx.beginPath();
+        this.ctx.arc(portal.x, portal.y, portal.width / 2, 0, Math.PI * 2);
+        this.ctx.stroke();
+        this.ctx.restore();
+      }
+    }
+  }
+
   drawEnemyBullets() {
     const img = this.enemyBulletImage;
     // 表示サイズは当たり判定サイズの4倍（見た目のみ拡大。ヒットボックスは据え置き）。
@@ -1330,6 +1483,21 @@ class GameEngine {
       // brightness(0)→真っ黒 → invert(1)→真っ白。アルファ（形）は保たれる。
       this.ctx.filter = 'brightness(0) invert(1)';
       this.ctx.drawImage(img, x, y, w, h);
+      this.ctx.restore();
+    }
+  }
+
+  // 横 frameCount 分割のスプライトシートから frameIndex 番目のコマを白フラッシュ付きで描画する。
+  drawSpriteFlash(img, frameIndex, frameCount, x, y, w, h, amount) {
+    const fw = img.naturalWidth / frameCount;
+    const fh = img.naturalHeight;
+    const sx = frameIndex * fw;
+    this.ctx.drawImage(img, sx, 0, fw, fh, x, y, w, h);
+    if (amount > 0) {
+      this.ctx.save();
+      this.ctx.globalAlpha = Math.max(0, Math.min(1, amount));
+      this.ctx.filter = 'brightness(0) invert(1)';
+      this.ctx.drawImage(img, sx, 0, fw, fh, x, y, w, h);
       this.ctx.restore();
     }
   }
@@ -1382,6 +1550,7 @@ class GameEngine {
       state.render(dt);
     } else {
       this.drawBackground(dt);
+      this.drawPortals();
       this.drawParticles();
       this.drawPowerUps();
       this.drawWeaponItems();
@@ -1391,9 +1560,10 @@ class GameEngine {
       this.drawPlayerBullets();
       this.drawPlayer();
 
-      // ゲーム中のみ残機アイコンを表示する。
+      // ゲーム中のみ残機アイコンとステージ開始テロップを表示する。
       if (state === this.stateMachine.states.playing) {
         this.drawLives();
+        this.drawStageIntro();
       }
     }
 
