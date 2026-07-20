@@ -1653,8 +1653,11 @@ class GameEngine {
 
   handleMouseMove(event) {
     const rect = this.canvas.getBoundingClientRect();
-    this.mouse.x = event.clientX - rect.left;
-    this.mouse.y = event.clientY - rect.top;
+    // 表示サイズとキャンバス内部解像度（720×1280）のスケール差を補正する。
+    const scaleX = this.canvas.width / rect.width;
+    const scaleY = this.canvas.height / rect.height;
+    this.mouse.x = (event.clientX - rect.left) * scaleX;
+    this.mouse.y = (event.clientY - rect.top) * scaleY;
   }
 
   handleClick() {
@@ -1674,9 +1677,12 @@ restartButton.addEventListener('click', (event) => {
   event.stopPropagation();
   game.handleClick();
 });
-overlay.addEventListener('click', (event) => {
-  if (event.target === overlay) {
-    game.handleClick();
-  }
+// オーバーレイ上のどこをクリックしても操作できるようにする（ロゴや文字の上も含む）。
+overlay.addEventListener('click', () => {
+  game.handleClick();
+});
+// プレイ中（オーバーレイ非表示）はキャンバスのクリックを受け取る。
+canvas.addEventListener('click', () => {
+  game.handleClick();
 });
 game.init();

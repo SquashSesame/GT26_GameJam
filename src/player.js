@@ -99,13 +99,11 @@ function createPlayer(game) {
       if (game.keys['ArrowUp'] || game.keys['w']) dy -= 1;
       if (game.keys['ArrowDown'] || game.keys['s']) dy += 1;
 
+      // マウス位置へ滑らかに追従する（カーソルへ向かって線形補間）。
       if (game.mouse.x !== undefined) {
-        const tx = game.mouse.x - player.x;
-        const ty = game.mouse.y - player.y;
-        const dist = Math.hypot(tx, ty) || 1;
-        const moveScale = Math.min(1, dt * 3.8);
-        player.x += (tx / dist) * Math.min(player.speed * dt * moveScale, 220) * 0.65;
-        player.y += (ty / dist) * Math.min(player.speed * dt * moveScale, 220) * 0.65;
+        const follow = Math.min(1, dt * 16);
+        player.x += (game.mouse.x - player.x) * follow;
+        player.y += (game.mouse.y - player.y) * follow;
       }
 
       if (dx || dy) {
