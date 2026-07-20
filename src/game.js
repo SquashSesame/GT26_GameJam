@@ -739,6 +739,8 @@ class GameEngine {
       // 撃破時にこの位置へ出現させるポータルの id（portals.js / 未指定なら null）。
       portal: portalId
     };
+    // ボス戦中は5秒おきにパワーアップを自動出現させる（その残り時間）。
+    this.bossPowerupTimer = 5;
   }
 
   createParticles(x, y, color) {
@@ -1130,6 +1132,14 @@ class GameEngine {
 
   updateBoss(dt) {
     if (!this.boss || !this.boss.alive) return;
+
+    // ボス戦中は5秒おきにパワーアップアイテムを自動出現させる。
+    this.bossPowerupTimer -= dt;
+    if (this.bossPowerupTimer <= 0) {
+      const x = 60 + Math.random() * (this.canvas.width - 120);
+      this.spawnPowerUpItem(x);
+      this.bossPowerupTimer = 5;
+    }
 
     // 被弾フラッシュを時間で減衰させる。
     if (this.boss.flash > 0) {
