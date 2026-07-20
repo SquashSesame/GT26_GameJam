@@ -8,6 +8,7 @@
 //   delay:     ステージ開始からの待ち時間（秒）
 //   type:      出現させる敵（game.js の ENEMY_TYPES のキー: grunt / diver / tank）
 //   count:     敵の数
+//   hp:        敵1体の体力（省略可 / 省略時は type 既定値＋ステージ補正）
 //   algorithm: 移動アルゴリズム（game.js の ENEMY_MOVEMENTS のキー: bounce / straight / sine / zigzag）
 //   params:    アルゴリズムへの任意パラメータ（省略可 / 例: { speedY: 130, amplitude: 90 }）
 //   startY / rowSpacing / columns: 隊形の指定（省略可）
@@ -15,7 +16,8 @@
 //              省略した場合は type ごとの単色矩形で描画される。
 //
 // ボス出現エントリ（任意 / 1ステージに1つ）:
-//   { delay: <秒>, boss: true, image?: <ファイル名> }
+//   { delay: <秒>, boss: true, hp?: <体力>, image?: <ファイル名> }
+//   hp: ボスの体力（省略可 / 省略時は 26 + ステージ×4）。
 //   ステージ開始から delay 秒後にボス戦へ移行する（予告表示 → 1秒後にボス出現）。
 //   image: ボスの描画に使う画像ファイル名（res/img 内 / 省略可 / 例: 'cat_2.png'）。
 //          省略した場合はボスは矩形で描画される。
@@ -23,27 +25,27 @@
 //   ボスが出現する（従来動作のフォールバック）。
 const SPAWN_TABLES = {
   1: [
-    { delay: 0.8, type: 'grunt', count: 10, algorithm: 'bounce', image: 'hotdog_stand.png' },
-    { delay: 4.0, type: 'grunt', count: 10, algorithm: 'sine', image: 'hotdog_stand.png' },
-    { delay: 8.0, type: 'diver', count: 10, algorithm: 'zigzag', image: 'hotdog_stand.png' },
-    { delay: 12.8, type: 'grunt', count: 10, algorithm: 'bounce', image: 'hotdog_stand.png' },
-    { delay: 14.0, type: 'grunt', count: 10, algorithm: 'sine', image: 'hotdog_stand.png' },
-    { delay: 16.0, type: 'diver', count: 10, algorithm: 'zigzag', image: 'hotdog_stand.png' },
-    { delay: 18.0, boss: true, image: 'cat_2.png' }
+    { delay: 0.8, type: 'grunt', count: 10, hp: 2, algorithm: 'bounce', image: 'hotdog_stand.png' },
+    { delay: 4.0, type: 'grunt', count: 10, hp: 2, algorithm: 'sine', image: 'hotdog_stand.png' },
+    { delay: 8.0, type: 'diver', count: 10, hp: 3, algorithm: 'zigzag', image: 'hotdog_stand.png' },
+    { delay: 12.8, type: 'grunt', count: 10, hp: 2, algorithm: 'bounce', image: 'hotdog_stand.png' },
+    { delay: 14.0, type: 'grunt', count: 10, hp: 2, algorithm: 'sine', image: 'hotdog_stand.png' },
+    { delay: 16.0, type: 'diver', count: 10, hp: 3, algorithm: 'zigzag', image: 'hotdog_stand.png' },
+    { delay: 18.0, boss: true, hp: 1000, image: 'cat_2.png' }
   ],
   2: [
-    { delay: 0.8, type: 'grunt', count: 7, algorithm: 'sine', image: 'hotdog_stand.png' },
-    { delay: 4.0, type: 'diver', count: 5, algorithm: 'zigzag', image: 'hotdog_stand.png' },
-    { delay: 8.0, type: 'diver', count: 5, algorithm: 'straight', params: { speedY: 130 }, image: 'hotdog_stand.png' },
-    { delay: 11.0, type: 'tank', count: 2, algorithm: 'bounce', image: 'hotdog_stand.png' },
-    { delay: 16.0, boss: true, image: 'cat_2.png' }
+    { delay: 0.8, type: 'grunt', count: 7, hp: 2, algorithm: 'sine', image: 'hotdog_stand.png' },
+    { delay: 4.0, type: 'diver', count: 5, hp: 3, algorithm: 'zigzag', image: 'hotdog_stand.png' },
+    { delay: 8.0, type: 'diver', count: 5, hp: 3, algorithm: 'straight', params: { speedY: 130 }, image: 'hotdog_stand.png' },
+    { delay: 11.0, type: 'tank', count: 2, hp: 6, algorithm: 'bounce', image: 'hotdog_stand.png' },
+    { delay: 16.0, boss: true, hp: 1500, image: 'cat_2.png' }
   ],
   3: [
-    { delay: 0.6, type: 'diver', count: 8, algorithm: 'sine', image: 'hotdog_stand.png' },
-    { delay: 4.0, type: 'tank', count: 3, algorithm: 'bounce', image: 'hotdog_stand.png' },
-    { delay: 8.0, type: 'diver', count: 6, algorithm: 'zigzag', image: 'hotdog_stand.png' },
-    { delay: 12.0, type: 'tank', count: 3, algorithm: 'straight', params: { speedY: 150 }, image: 'hotdog_stand.png' },
-    { delay: 18.0, boss: true, image: 'cat_2.png' }
+    { delay: 0.6, type: 'diver', count: 8, hp: 3, algorithm: 'sine', image: 'hotdog_stand.png' },
+    { delay: 4.0, type: 'tank', count: 3, hp: 5, algorithm: 'bounce', image: 'hotdog_stand.png' },
+    { delay: 8.0, type: 'diver', count: 6, hp: 3, algorithm: 'zigzag', image: 'hotdog_stand.png' },
+    { delay: 12.0, type: 'tank', count: 3, hp: 5, algorithm: 'straight', params: { speedY: 150 }, image: 'hotdog_stand.png' },
+    { delay: 18.0, boss: true, hp: 2000, image: 'cat_2.png' }
   ]
 };
 

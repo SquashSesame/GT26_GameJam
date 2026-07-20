@@ -145,6 +145,8 @@ class Enemy {
     this.score = config.score;
     // 出現テーブルで指定された敵画像（未指定なら null。その場合は単色矩形で描画）。
     this.image = config.image || null;
+    // ダメージ時の白フラッシュ量（1=真っ白 → 0=通常）。被弾で1にセットし時間で減衰する。
+    this.flash = 0;
     // プレイヤーへの射撃までの残り時間（秒）。敵ごとにランダムで初期化し、発射のたびに再設定する。
     this.shootCooldown = randomShotInterval();
     this.movement = movement;

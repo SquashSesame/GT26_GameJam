@@ -8,6 +8,9 @@ const overlayTitle = document.getElementById('overlayTitle');
 const overlayMessage = document.getElementById('overlayMessage');
 const restartButton = document.getElementById('restartButton');
 
+// ダメージを受けたときの白フラッシュの継続時間（秒）。1（真っ白）→0（通常）へ減衰する。
+const DAMAGE_FLASH_DURATION = 0.2;
+
 // ゲーム全体の画面状態（ステート）の基底クラス。
 // 各画面はこれを継承し、必要なハンドラ（enter/update/handleKeyDown など）だけを上書きする。
 class BaseState {
@@ -125,6 +128,12 @@ class PlayingState extends BaseState {
     }
 
     this.game.player.update(dt);
+
+    // プレイヤーの被弾フラッシュを時間で減衰させる。
+    if (this.game.playerFlash > 0) {
+      this.game.playerFlash = Math.max(0, this.game.playerFlash - dt / DAMAGE_FLASH_DURATION);
+    }
+
     this.game.shotCooldown -= dt;
     if (this.game.shotCooldown <= 0) {
       this.game.fireBullet();
@@ -293,7 +302,7 @@ class GameEngine {
     this.backgroundImage = new Image();
     this.backgroundImage.src = 'res/img/street.png';
     this.playerImage = new Image();
-    this.playerImage.src = 'res/img/cat.png';
+    this.playerImage.src = 'res/img/player_top.png';
     this.bulletImage = new Image();
     this.bulletImage.src = 'res/img/btama.png';
     this.companyLogoImage = new Image();
@@ -320,6 +329,8 @@ class GameEngine {
     // プレイヤーの生成・移動・状態管理は player.js に分離している。
     this.player = createPlayer(this);
     this.playerStateMachine = this.player.stateMachine;
+    // プレイヤーのダメージ時白フラッシュ量（1=真っ白 → 0=通常）。
+    this.playerFlash = 0;
 
     this.playerBullets = [];
     this.enemyBullets = [];
@@ -382,6 +393,7 @@ class GameEngine {
     this.score = 0;
     this.stage = 1;
     this.lives = this.maxLives;
+    this.playerFlash = 0;
     this.player.x = this.canvas.width / 2;
     this.player.y = this.canvas.height - 110;
     this.playerBullets = [];
@@ -586,7 +598,8 @@ class GameEngine {
   // count はエントリの総数（隊形の座標計算に使う）。
   spawnEnemyAt(entry, index, count) {
     const typeDef = ENEMY_TYPES[entry.type] || ENEMY_TYPES.grunt;
-    const hp = typeDef.hp + Math.floor(this.stage / 3);
+    // テーブルで hp が指定されていればそれを使う。未指定なら type 既定値＋ステージ補正。
+    const hp = entry.hp != null ? entry.hp : typeDef.hp + Math.floor(this.stage / 3);
     const positions = this.buildFormation(count, entry);
     const pos = positions[index];
     if (!pos) {
@@ -619,7 +632,7 @@ class GameEngine {
     this.enemies.push(enemy);
   }
 
-  spawnBoss(image = null) {
+  spawnBoss(image = null, hp = null) {
     // ボスの表示・当たり判定サイズ（基準 72px の 4 倍）。
     const size = 72 * 4;
     this.boss = {
@@ -627,9 +640,12 @@ class GameEngine {
       y: 120,
       width: size,
       height: size,
-      hp: 26 + this.stage * 4,
+      // テーブルで hp が指定されていればそれを使う。未指定なら従来の計算式。
+      hp: hp != null ? hp : 26 + this.stage * 4,
       alive: true,
       phase: 0,
+      // ダメージ時の白フラッシュ量（1=真っ白 → 0=通常）。
+      flash: 0,
       // 出現テーブルで指定されたボス画像（未指定なら null。その場合は矩形で描画）。
       image
     };
@@ -777,6 +793,11 @@ class GameEngine {
       // 移動は各敵の movement クラスに委譲する。
       enemy.update(dt, this);
 
+      // 被弾フラッシュを時間で減衰させる。
+      if (enemy.flash > 0) {
+        enemy.flash = Math.max(0, enemy.flash - dt / DAMAGE_FLASH_DURATION);
+      }
+
       // 画面外まで大きく外れた敵は退場させる。
       // 上端だけは、出現直後（画面上から降りてくる敵）を誤って消さないよう、
       // 上向きに移動している敵（vy < 0：bounce が下端で跳ね返って上へ抜けたもの）に限定する。
@@ -806,6 +827,7 @@ class GameEngine {
           Math.abs(bullet.y - enemy.y) < (bullet.height + enemy.height) / 2
         ) {
           enemy.hp -= 1;
+          enemy.flash = 1;
           bullet.y = -999;
           if (enemy.hp <= 0) {
             this.score += enemy.score || 100;
@@ -845,13 +867,15 @@ class GameEngine {
     this.stageState = 'boss';
     // テーブルで image が指定されていれば、その画像でボスを描画する。
     const image = this.getImage(entry.image);
+    // テーブルで hp が指定されていればそれをボスに反映する（未指定なら null）。
+    const bossHp = entry.hp != null ? entry.hp : null;
     // ボス出現前は「WARNING」の帯テロップを画面中央に表示する（背景の暗転はしない）。
     this.showBossWarning();
     // ボス出現の予告と同時にボスBGMへクロスフェードする。
     this.playBossBgm();
     setTimeout(() => {
       this.hideBossWarning();
-      this.spawnBoss(image);
+      this.spawnBoss(image, bossHp);
     }, 1000);
   }
 
@@ -866,6 +890,12 @@ class GameEngine {
 
   updateBoss(dt) {
     if (!this.boss || !this.boss.alive) return;
+
+    // 被弾フラッシュを時間で減衰させる。
+    if (this.boss.flash > 0) {
+      this.boss.flash = Math.max(0, this.boss.flash - dt / DAMAGE_FLASH_DURATION);
+    }
+
     this.boss.phase = (this.boss.phase + dt * 0.8) % (Math.PI * 2);
     this.boss.x += Math.sin(this.boss.phase) * 110 * dt;
     this.boss.y = 120 + Math.sin(this.boss.phase * 2) * 24;
@@ -877,6 +907,7 @@ class GameEngine {
         Math.abs(bullet.y - this.boss.y) < (bullet.height + this.boss.height) / 2
       ) {
         this.boss.hp -= 1;
+        this.boss.flash = 1;
         bullet.y = -999;
         this.createParticles(this.boss.x, this.boss.y, '#ffd166');
         if (this.boss.hp <= 0) {
@@ -921,6 +952,7 @@ class GameEngine {
     if (this.player.invulnerable) return;
 
     this.lives -= 1;
+    this.playerFlash = 1;
     this.player.transitionTo('invulnerable');
     this.createParticles(this.player.x, this.player.y, '#5cf2ff');
     this.updateHud();
@@ -1041,7 +1073,7 @@ class GameEngine {
     if (img.complete && img.naturalWidth) {
       this.ctx.save();
       this.ctx.translate(this.player.x, this.player.y);
-      this.ctx.drawImage(img, -this.player.width / 2, -this.player.height / 2, this.player.width, this.player.height);
+      this.drawImageFlash(img, -this.player.width / 2, -this.player.height / 2, this.player.width, this.player.height, this.playerFlash);
       this.ctx.restore();
       return;
     }
@@ -1090,12 +1122,25 @@ class GameEngine {
     }
   }
 
+  // 画像を白フラッシュ付きで描画する。amount(0..1) の分だけ画像の形のまま白く上塗りする。
+  drawImageFlash(img, x, y, w, h, amount) {
+    this.ctx.drawImage(img, x, y, w, h);
+    if (amount > 0) {
+      this.ctx.save();
+      this.ctx.globalAlpha = Math.max(0, Math.min(1, amount));
+      // brightness(0)→真っ黒 → invert(1)→真っ白。アルファ（形）は保たれる。
+      this.ctx.filter = 'brightness(0) invert(1)';
+      this.ctx.drawImage(img, x, y, w, h);
+      this.ctx.restore();
+    }
+  }
+
   drawEnemies() {
     for (const enemy of this.enemies) {
       // 画像が指定され読み込み済みなら画像で、そうでなければ従来の単色矩形で描画する。
       const img = enemy.image;
       if (img && img.complete && img.naturalWidth) {
-        this.ctx.drawImage(img, enemy.x - enemy.width / 2, enemy.y - enemy.height / 2, enemy.width, enemy.height);
+        this.drawImageFlash(img, enemy.x - enemy.width / 2, enemy.y - enemy.height / 2, enemy.width, enemy.height, enemy.flash);
       } else {
         this.ctx.fillStyle = enemy.color || '#ff6b6b';
         this.ctx.fillRect(enemy.x - enemy.width / 2, enemy.y - enemy.height / 2, enemy.width, enemy.height);
@@ -1110,7 +1155,7 @@ class GameEngine {
     // 画像が指定され読み込み済みなら画像で、そうでなければ従来の矩形で描画する。
     const img = this.boss.image;
     if (img && img.complete && img.naturalWidth) {
-      this.ctx.drawImage(img, -this.boss.width / 2, -this.boss.height / 2, this.boss.width, this.boss.height);
+      this.drawImageFlash(img, -this.boss.width / 2, -this.boss.height / 2, this.boss.width, this.boss.height, this.boss.flash);
     } else {
       this.ctx.fillStyle = '#ff5d8f';
       this.ctx.fillRect(-this.boss.width / 2, -this.boss.height / 2, this.boss.width, this.boss.height);
