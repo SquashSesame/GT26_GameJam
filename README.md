@@ -30,3 +30,7 @@ npm run dist:win
 ```bash
 npm run dist:mac
 ```
+
+
+# Clone 
+- git clone https://github.com/SquashSesame/GT26_GameJam.git
