@@ -22,7 +22,9 @@
       "output": "dist"
     },
     "files": [
+      "index.html",
       "src/**/*",
+      "res/**/*",
       "!**/*.ts",
       "!**/node_modules/.cache/**"
     ],

@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ふぉうりん・らぶ</title>
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="src/styles.css" />
   </head>
   <body>
     <div class="game-shell">
@@ -16,11 +16,11 @@
       <div class="game-view">
         <canvas id="gameCanvas" width="720" height="1280"></canvas>
         <div id="overlay" class="overlay hidden">
-          <img id="overlayLogo" class="overlay-logo hidden" src="../res/img/logo.png" alt="Game Logo" />
+          <img id="overlayLogo" class="overlay-logo hidden" src="res/img/logo.png" alt="Game Logo" />
           <h1 id="overlayTitle">Stage 1</h1>
           <p id="overlayMessage">Press Enter to start</p>
           <button id="restartButton">Restart</button>
-          <img id="titleCharacter" class="title-character hidden" src="../res/img/player_front.png" alt="Player" />
+          <img id="titleCharacter" class="title-character hidden" src="res/img/player_front.png" alt="Player" />
         </div>
         <div id="bossWarning" class="boss-warning hidden">
           <div class="boss-warning-band">
@@ -33,9 +33,9 @@
       </div>
     </div>
 
-    <script src="spawnTables.js"></script>
-    <script src="player.js"></script>
-    <script src="enemy.js"></script>
-    <script src="game.js"></script>
+    <script src="src/spawnTables.js"></script>
+    <script src="src/player.js"></script>
+    <script src="src/enemy.js"></script>
+    <script src="src/game.js"></script>
   </body>
 </html>
