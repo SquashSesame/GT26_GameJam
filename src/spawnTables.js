@@ -23,29 +23,41 @@
 //          省略した場合はボスは矩形で描画される。
 //   このエントリを置かない場合は、出現テーブルを全て消化し敵を全滅させた時点で
 //   ボスが出現する（従来動作のフォールバック）。
+//
+// アイテム出現エントリ（任意 / 好きな数だけ置ける）:
+//   { delay: <秒>, item: 'weapon',  id: <weapons.js の id: ball / car / building / nuclear> }
+//   { delay: <秒>, item: 'powerup', id: <powerups.js の id: spread2 / spread3 / spread5> }
+//   x: 横位置（px / 省略時は横位置ランダム）。
+//   ステージ開始から delay 秒後に、指定アイテムが画面上から1つ落下する。
 const SPAWN_TABLES = {
   1: [
-    { delay: 0.8, type: 'grunt', count: 10, hp: 2, algorithm: 'bounce', image: 'hotdog_stand.png' },
-    { delay: 4.0, type: 'grunt', count: 10, hp: 2, algorithm: 'sine', image: 'hotdog_stand.png' },
-    { delay: 8.0, type: 'diver', count: 10, hp: 3, algorithm: 'zigzag', image: 'hotdog_stand.png' },
-    { delay: 12.8, type: 'grunt', count: 10, hp: 2, algorithm: 'bounce', image: 'hotdog_stand.png' },
-    { delay: 14.0, type: 'grunt', count: 10, hp: 2, algorithm: 'sine', image: 'hotdog_stand.png' },
-    { delay: 16.0, type: 'diver', count: 10, hp: 3, algorithm: 'zigzag', image: 'hotdog_stand.png' },
-    { delay: 18.0, boss: true, hp: 1000, image: 'cat_2.png' }
+    { delay: 0.8, type: 'grunt', count: 10, hp: 2, algorithm: 'bounce', image: 'enemy_hotdog_stand.png' },
+    { delay: 4.0, type: 'grunt', count: 10, hp: 2, algorithm: 'sine', image: 'enemy_hotdog_stand.png' },
+    { delay: 5.0, item: 'powerup', id: 'spread3' },
+    { delay: 8.0, type: 'diver', count: 10, hp: 3, algorithm: 'zigzag', image: 'enemy_hotdog_stand.png' },
+    { delay: 10.0, item: 'weapon', id: 'car' },
+    { delay: 12.8, type: 'grunt', count: 10, hp: 2, algorithm: 'bounce', image: 'enemy_hotdog_stand.png' },
+    { delay: 14.0, type: 'grunt', count: 10, hp: 2, algorithm: 'sine', image: 'enemy_hotdog_stand.png' },
+    { delay: 16.0, type: 'diver', count: 10, hp: 3, algorithm: 'zigzag', image: 'enemy_hotdog_stand.png' },
+    { delay: 18.0, boss: true, hp: 100, image: 'boss_cat_2.png' }
   ],
   2: [
-    { delay: 0.8, type: 'grunt', count: 7, hp: 2, algorithm: 'sine', image: 'hotdog_stand.png' },
-    { delay: 4.0, type: 'diver', count: 5, hp: 3, algorithm: 'zigzag', image: 'hotdog_stand.png' },
-    { delay: 8.0, type: 'diver', count: 5, hp: 3, algorithm: 'straight', params: { speedY: 130 }, image: 'hotdog_stand.png' },
-    { delay: 11.0, type: 'tank', count: 2, hp: 6, algorithm: 'bounce', image: 'hotdog_stand.png' },
-    { delay: 16.0, boss: true, hp: 1500, image: 'cat_2.png' }
+    { delay: 0.8, type: 'grunt', count: 7, hp: 2, algorithm: 'sine', image: 'enemy_hotdog_stand.png' },
+    { delay: 3.0, item: 'powerup', id: 'spread5' },
+    { delay: 4.0, type: 'diver', count: 5, hp: 3, algorithm: 'zigzag', image: 'enemy_hotdog_stand.png' },
+    { delay: 8.0, type: 'diver', count: 5, hp: 3, algorithm: 'straight', params: { speedY: 130 }, image: 'enemy_hotdog_stand.png' },
+    { delay: 9.0, item: 'weapon', id: 'building' },
+    { delay: 11.0, type: 'tank', count: 2, hp: 6, algorithm: 'bounce', image: 'enemy_hotdog_stand.png' },
+    { delay: 16.0, boss: true, hp: 150, image: 'boss_cat_2.png' }
   ],
   3: [
-    { delay: 0.6, type: 'diver', count: 8, hp: 3, algorithm: 'sine', image: 'hotdog_stand.png' },
-    { delay: 4.0, type: 'tank', count: 3, hp: 5, algorithm: 'bounce', image: 'hotdog_stand.png' },
-    { delay: 8.0, type: 'diver', count: 6, hp: 3, algorithm: 'zigzag', image: 'hotdog_stand.png' },
-    { delay: 12.0, type: 'tank', count: 3, hp: 5, algorithm: 'straight', params: { speedY: 150 }, image: 'hotdog_stand.png' },
-    { delay: 18.0, boss: true, hp: 2000, image: 'cat_2.png' }
+    { delay: 0.6, type: 'diver', count: 8, hp: 3, algorithm: 'sine', image: 'enemy_hotdog_stand.png' },
+    { delay: 3.0, item: 'weapon', id: 'nuclear' },
+    { delay: 4.0, type: 'tank', count: 3, hp: 5, algorithm: 'bounce', image: 'enemy_hotdog_stand.png' },
+    { delay: 8.0, type: 'diver', count: 6, hp: 3, algorithm: 'zigzag', image: 'enemy_hotdog_stand.png' },
+    { delay: 10.0, item: 'powerup', id: 'spread5' },
+    { delay: 12.0, type: 'tank', count: 3, hp: 5, algorithm: 'straight', params: { speedY: 150 }, image: 'enemy_hotdog_stand.png' },
+    { delay: 18.0, boss: true, hp: 200, image: 'boss_cat_2.png' }
   ]
 };
 

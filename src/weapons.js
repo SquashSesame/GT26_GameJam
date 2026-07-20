@@ -9,10 +9,16 @@
 //          straight … 直進弾を2発 / spread … 5way拡散 / heavy … 大型・低速・高威力 /
 //          bomb      … 広範囲の大量弾
 const WEAPONS = [
-  { id: 'ball',     image: 'baseball.png', type: 'straight' },
-  { id: 'car',      image: 'car.png',      type: 'spread' },
-  { id: 'billding', image: 'building.png', type: 'heavy' },
-  { id: 'atmbom',   image: 'atmbom.png',   type: 'bomb' }
+  { id: 'ball',     image: 'wep_baseball.png', type: 'straight' },
+  { id: 'car',      image: 'wep_bullet_usa_car.png',      type: 'spread' },
+  { id: 'building', image: 'wep_building.png', type: 'heavy' },
+  { id: 'nuclear',   image: 'wep_nuclear.png',   type: 'bomb' },
+  { id: 'bills',   image: 'wep_bills.png',   type: 'bomb' },
+  { id: 'brick',   image: 'wep_brick.png',   type: 'bomb' },
+  { id: 'cat',   image: 'wep_cat.png',   type: 'bomb' },
+  { id: 'chocolate',   image: 'wep_chocolate.png',   type: 'bomb' },
+  { id: 'glass_bottle',   image: 'wep_glass_bottle.png',   type: 'bomb' },
+  { id: 'trump_tower',   image: 'wep_trump_tower.png',   type: 'bomb' }
 ];
 
 // id からウェポン定義を引くためのマップ。

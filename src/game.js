@@ -11,6 +11,15 @@ const restartButton = document.getElementById('restartButton');
 // ダメージを受けたときの白フラッシュの継続時間（秒）。1（真っ白）→0（通常）へ減衰する。
 const DAMAGE_FLASH_DURATION = 0.2;
 
+// 既定武器の発射方向カテゴリ → 弾の左右オフセット（前方拡散）。
+// パワーアップの category（powerups.js）でこのキーを指定する。
+const FIRE_PATTERNS = {
+  '1way': [0],
+  '2way': [-0.28, 0.28],
+  '3way': [-0.45, 0, 0.45],
+  '5way': [-0.7, -0.35, 0, 0.35, 0.7]
+};
+
 // ゲーム全体の画面状態（ステート）の基底クラス。
 // 各画面はこれを継承し、必要なハンドラ（enter/update/handleKeyDown など）だけを上書きする。
 class BaseState {
@@ -305,7 +314,9 @@ class GameEngine {
     this.playerImage = new Image();
     this.playerImage.src = 'res/img/player_top.png';
     this.bulletImage = new Image();
-    this.bulletImage.src = 'res/img/btama.png';
+    this.bulletImage.src = 'res/img/wep_btama.png';
+    this.enemyBulletImage = new Image();
+    this.enemyBulletImage.src = 'res/img/wep_btama.png';
     this.companyLogoImage = new Image();
     this.companyLogoImage.src = 'res/img/logo_gamejam.png';
     // 出現テーブルで image 指定された画像（敵・ボス）を、ファイル名ごとにキャッシュして使い回す。
@@ -341,7 +352,9 @@ class GameEngine {
     this.shotCooldown = 0;
     this.lastFrame = performance.now();
     this.stageState = 'wave';
-    this.weaponLevel = 0;
+    // 発射方向カテゴリ（FIRE_PATTERNS のキー）と攻撃力。パワーアップ取得で更新する。
+    this.playerCategory = '1way';
+    this.playerPower = 1;
     this.powerUps = [];
     // 取得中のウェポン（WEAPONS のエントリ / null なら既定武器）と、落下中のウェポンアイテム。
     this.currentWeapon = null;
@@ -407,7 +420,8 @@ class GameEngine {
     this.particles = [];
     this.shotCooldown = 0;
     this.stageState = 'wave';
-    this.weaponLevel = 0;
+    this.playerCategory = '1way';
+    this.playerPower = 1;
     this.powerUps = [];
     this.currentWeapon = null;
     this.weaponItems = [];
@@ -671,22 +685,40 @@ class GameEngine {
     }
   }
 
-  spawnPowerUp(x, y) {
-    const spawnY = -24 - Math.random() * 60;
-    const spawnX = Math.max(24, Math.min(this.canvas.width - 24, x));
+  // 出現テーブルのアイテムエントリからアイテムを1つ落下させる。
+  // entry: { item: 'weapon'|'powerup', id: <文字列>, x?: <px / 省略時は横位置ランダム> }
+  spawnItemEntry(entry) {
+    const x = entry.x != null ? entry.x : 60 + Math.random() * (this.canvas.width - 120);
+    if (entry.item === 'weapon') {
+      this.spawnWeaponItem(x, entry.id);
+    } else if (entry.item === 'powerup') {
+      this.spawnPowerUpItem(x, entry.id);
+    }
+  }
+
+  // 指定した id のパワーアップアイテムを画面上から落下させる。
+  spawnPowerUpItem(x, powerupId) {
+    const powerup = POWERUPS_BY_ID[powerupId];
+    if (!powerup) {
+      return;
+    }
+    const spawnX = Math.max(30, Math.min(this.canvas.width - 30, x));
     this.powerUps.push({
       x: spawnX,
-      y: spawnY,
-      width: 16,
-      height: 16,
-      vy: 120 + Math.random() * 40,
-      vx: (Math.random() - 0.5) * 30,
-      kind: ['two', 'three', 'five'][Math.floor(Math.random() * 3)]
+      y: -30 - Math.random() * 40,
+      width: 48,
+      height: 48,
+      vy: 110 + Math.random() * 30,
+      vx: (Math.random() - 0.5) * 20,
+      powerupId: powerup.id,
+      category: powerup.category,
+      power: powerup.power,
+      image: this.getImage(powerup.image)
     });
   }
 
-  // 指定した id のウェポンアイテムを落下させる。
-  spawnWeaponItem(x, y, weaponId) {
+  // 指定した id のウェポンアイテムを画面上から落下させる。
+  spawnWeaponItem(x, weaponId) {
     const weapon = WEAPONS_BY_ID[weaponId];
     if (!weapon) {
       return;
@@ -705,13 +737,18 @@ class GameEngine {
     });
   }
 
-  // ランダムなウェポンアイテムを落下させる（敵撃破時のドロップなどに使う）。
-  spawnRandomWeaponItem(x, y) {
-    const weapon = WEAPONS[Math.floor(Math.random() * WEAPONS.length)];
-    this.spawnWeaponItem(x, y, weapon.id);
+  // パワーアップ取得時：発射方向カテゴリと攻撃力を反映する。
+  setPowerUp(powerupId) {
+    const powerup = POWERUPS_BY_ID[powerupId];
+    if (!powerup) {
+      return;
+    }
+    this.playerCategory = powerup.category;
+    this.playerPower = powerup.power;
+    this.createParticles(this.player.x, this.player.y, '#7dff9a');
   }
 
-  // ウェポンアイテム取得時に、プレイヤーの武器を切り替える。
+  // ウェポンアイテム取得時：プレイヤーの武器を切り替える。
   setWeapon(weaponId) {
     const weapon = WEAPONS_BY_ID[weaponId];
     if (!weapon) {
@@ -721,8 +758,9 @@ class GameEngine {
     this.createParticles(this.player.x, this.player.y, '#ffd166');
   }
 
-  // プレイヤーの弾を1発追加する。image を指定するとその画像で描画し、damage で威力を変えられる。
-  pushPlayerBullet(x, y, vx, vy, size, image = null, damage = 1) {
+  // プレイヤーの弾を1発追加する。image を指定するとその画像で描画する。
+  // ダメージは現在の攻撃力（playerPower / パワーアップで変化）を用いる。
+  pushPlayerBullet(x, y, vx, vy, size, image = null) {
     this.playerBullets.push({
       x,
       y,
@@ -732,7 +770,7 @@ class GameEngine {
       vy,
       rotation: Math.random() * Math.PI * 2,
       image,
-      damage
+      damage: this.playerPower
     });
   }
 
@@ -745,24 +783,11 @@ class GameEngine {
       return;
     }
 
-    // 既定武器（btama）：weaponLevel に応じた発射パターン。
-    const patterns = {
-      0: [[0]],
-      1: [[-0.28, -1], [0.28, -1]],
-      2: [[-0.45, -1], [0, -1], [0.45, -1]],
-      3: [
-        [-0.7, -1],
-        [-0.28, -1],
-        [0, -1],
-        [0.28, 1],
-        [0.7, 1]
-      ]
-    };
-    const pattern = patterns[Math.min(this.weaponLevel, 3)] || patterns[3];
-
+    // 既定武器（btama）：パワーアップの category に応じた前方拡散で発射する。
+    const offsets = FIRE_PATTERNS[this.playerCategory] || FIRE_PATTERNS['1way'];
     const originY = this.player.y - this.player.height / 2 - 10;
-    pattern.forEach(([dx, dy = -1]) => {
-      this.pushPlayerBullet(this.player.x, originY, (dx || 0) * 180, 560 * (dy || 1), 56, null, 1);
+    offsets.forEach((dx) => {
+      this.pushPlayerBullet(this.player.x, originY, dx * 180, -560, 56, null);
     });
   }
 
@@ -775,27 +800,27 @@ class GameEngine {
     switch (weapon.type) {
       case 'straight':
         // ball：速い直進弾を2発。
-        this.pushPlayerBullet(x - 16, y, 0, -640, 48, img, 1);
-        this.pushPlayerBullet(x + 16, y, 0, -640, 48, img, 1);
+        this.pushPlayerBullet(x - 16, y, 0, -640, 48, img);
+        this.pushPlayerBullet(x + 16, y, 0, -640, 48, img);
         break;
       case 'spread':
         // car：5way 拡散。
         [-0.5, -0.25, 0, 0.25, 0.5].forEach((a) => {
-          this.pushPlayerBullet(x, y, a * 280, -520, 56, img, 1);
+          this.pushPlayerBullet(x, y, a * 280, -520, 56, img);
         });
         break;
       case 'heavy':
-        // billding：大型・低速・高威力の1発。
-        this.pushPlayerBullet(x, y, 0, -380, 128, img, 5);
+        // building：大型・低速の1発。
+        this.pushPlayerBullet(x, y, 0, -380, 128, img);
         break;
       case 'bomb':
-        // atmbom：広範囲の大量弾（高威力）。
+        // nuclear：広範囲の大量弾。
         for (let i = -4; i <= 4; i += 1) {
-          this.pushPlayerBullet(x, y, i * 70, -500, 72, img, 2);
+          this.pushPlayerBullet(x, y, i * 70, -500, 72, img);
         }
         break;
       default:
-        this.pushPlayerBullet(x, y, 0, -560, 56, img, 1);
+        this.pushPlayerBullet(x, y, 0, -560, 56, img);
     }
   }
 
@@ -861,9 +886,9 @@ class GameEngine {
         height: this.player.height
       };
 
+      // 取得したら発射方向カテゴリと攻撃力を反映する。
       if (item.x < playerRect.x + playerRect.width && item.x + item.width > playerRect.x && item.y < playerRect.y + playerRect.height && item.y + item.height > playerRect.y) {
-        this.weaponLevel = Math.min(this.weaponLevel + 1, 3);
-        this.createParticles(this.player.x, this.player.y, '#7dff9a');
+        this.setPowerUp(item.powerupId);
         return false;
       }
 
@@ -948,12 +973,7 @@ class GameEngine {
           if (enemy.hp <= 0) {
             this.score += enemy.score || 100;
             this.createParticles(enemy.x, enemy.y, enemy.color || '#ff6b6b');
-            if (Math.random() < 0.22) {
-              this.spawnPowerUp(enemy.x, enemy.y);
-            } else if (Math.random() < 0.18) {
-              // ウェポンアイテムをドロップする。
-              this.spawnRandomWeaponItem(enemy.x, enemy.y);
-            }
+            // アイテムのドロップは出現テーブル（item エントリ）で管理する（ランダムドロップは廃止）。
             this.updateHud();
             return false;
           }
@@ -1230,8 +1250,18 @@ class GameEngine {
 
   drawPowerUps() {
     for (const item of this.powerUps) {
-      this.ctx.fillStyle = item.kind === 'two' ? '#7dff9a' : item.kind === 'three' ? '#5cf2ff' : '#ffd166';
-      this.ctx.fillRect(item.x - item.width / 2, item.y - item.height / 2, item.width, item.height);
+      const img = item.image;
+      const x = item.x - item.width / 2;
+      const y = item.y - item.height / 2;
+      if (img && img.complete && img.naturalWidth) {
+        this.ctx.drawImage(img, x, y, item.width, item.height);
+      } else {
+        this.ctx.fillStyle = '#7dff9a';
+        this.ctx.fillRect(x, y, item.width, item.height);
+        this.ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+        this.ctx.lineWidth = 2;
+        this.ctx.strokeRect(x, y, item.width, item.height);
+      }
     }
   }
 
@@ -1255,9 +1285,18 @@ class GameEngine {
   }
 
   drawEnemyBullets() {
-    this.ctx.fillStyle = '#ff9f1c';
+    const img = this.enemyBulletImage;
+    // 表示サイズは当たり判定サイズの4倍（見た目のみ拡大。ヒットボックスは据え置き）。
+    const displayScale = 4;
     for (const bullet of this.enemyBullets) {
-      this.ctx.fillRect(bullet.x - bullet.width / 2, bullet.y - bullet.height / 2, bullet.width, bullet.height);
+      if (img && img.complete && img.naturalWidth) {
+        const w = bullet.width * displayScale;
+        const h = bullet.height * displayScale;
+        this.ctx.drawImage(img, bullet.x - w / 2, bullet.y - h / 2, w, h);
+      } else {
+        this.ctx.fillStyle = '#ff9f1c';
+        this.ctx.fillRect(bullet.x - bullet.width / 2, bullet.y - bullet.height / 2, bullet.width, bullet.height);
+      }
     }
   }
 

@@ -199,6 +199,16 @@ class SpawnController {
         continue;
       }
 
+      // アイテム出現エントリ: 指定時間になったら1回だけアイテムを落下させる。
+      // entry: { item: 'weapon'|'powerup', id: <文字列>, x?: <px> }
+      if (entry.item) {
+        if (entry.spawnedCount < 1 && this.elapsed >= delay) {
+          entry.spawnedCount = 1;
+          this.game.spawnItemEntry(entry);
+        }
+        continue;
+      }
+
       const count = entry.count != null ? entry.count : 1;
       // 経過時間に達したぶんだけ、index 順に1体ずつ生成する。
       // （1フレームで複数体ぶんの時間が経過していれば while で追いつく。）
