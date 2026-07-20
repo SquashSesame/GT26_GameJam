@@ -580,19 +580,36 @@ class GameEngine {
 
   // ステージ番号に対応するステージ定義を返す（未定義なら既定値でフォールバック）。
   getStageDef(stage) {
-    return this.stages[stage] || { stage, name: `Stage ${stage}`, image: 'street.png' };
+    return this.stages[stage] || { stage, name: `Stage ${stage}`, image: 'bg_street.png', bgm: 'bgm_game2.ogg' };
   }
 
-  // ステージ開始時：背景画像とステージ名を反映する。
+  // ステージ開始時：背景画像・ステージ名・BGM を反映する。
   applyStage(stage) {
     const def = this.getStageDef(stage);
     this.stageName = def.name || `Stage ${stage}`;
+
     if (def.image) {
       const src = `res/img/${def.image}`;
       // 同じ画像なら再ロードしない（読み込み中の背景チラつきを避ける）。
       if (!this.backgroundImage.src.endsWith(src)) {
         this.backgroundImage = new Image();
         this.backgroundImage.src = src;
+      }
+    }
+
+    if (def.bgm) {
+      const bgmSrc = `res/snd/${def.bgm}`;
+      // 現在のゲームBGMと違う曲なら差し替える。実際の再生は playBgm() が
+      // クロスフェードで行うため、ここでは古い bgm を止めて Audio を差し替えるだけ。
+      if (!this.bgm.src.endsWith(bgmSrc)) {
+        if (this.bgm._fadeTimer) {
+          clearInterval(this.bgm._fadeTimer);
+          this.bgm._fadeTimer = null;
+        }
+        this.bgm.pause();
+        this.bgm = new Audio(bgmSrc);
+        this.bgm.loop = true;
+        this.bgm.volume = 1;
       }
     }
   }
@@ -806,7 +823,8 @@ class GameEngine {
       height: size,
       vx,
       vy,
-      rotation: Math.random() * Math.PI * 2,
+      // 画像は上向き（-y）を基準とし、移動方向へ向けて回転させる。
+      rotation: Math.atan2(vy, vx) + Math.PI / 2,
       image,
       damage: this.playerPower
     });
@@ -815,51 +833,14 @@ class GameEngine {
   fireBullet() {
     if (this.stateMachine.currentState !== this.stateMachine.states.playing) return;
 
-    // ウェポンアイテムを取得している場合は、その武器タイプで発射する。
-    if (this.currentWeapon) {
-      this.fireWeapon(this.currentWeapon);
-      return;
-    }
-
-    // 既定武器（btama）：パワーアップの category に応じた前方拡散で発射する。
+    // 発射数（WAY数）は武器レベル（= playerCategory）のみで決まる。
+    // ウェポンアイテムは弾の見た目（画像）と攻撃力（playerPower）だけを変える。
     const offsets = FIRE_PATTERNS[this.playerCategory] || FIRE_PATTERNS['1way'];
+    const image = this.currentWeapon ? this.getImage(this.currentWeapon.image) : null;
     const originY = this.player.y - this.player.height / 2 - 10;
     offsets.forEach((dx) => {
-      this.pushPlayerBullet(this.player.x, originY, dx * 180, -560, 56, null);
+      this.pushPlayerBullet(this.player.x, originY, dx * 180, -560, 56, image);
     });
-  }
-
-  // 取得中のウェポンのタイプに応じて弾を発射する。弾には武器画像を持たせる。
-  fireWeapon(weapon) {
-    const img = this.getImage(weapon.image);
-    const x = this.player.x;
-    const y = this.player.y - this.player.height / 2 - 10;
-
-    switch (weapon.type) {
-      case 'straight':
-        // ball：速い直進弾を2発。
-        this.pushPlayerBullet(x - 16, y, 0, -640, 48, img);
-        this.pushPlayerBullet(x + 16, y, 0, -640, 48, img);
-        break;
-      case 'spread':
-        // car：5way 拡散。
-        [-0.5, -0.25, 0, 0.25, 0.5].forEach((a) => {
-          this.pushPlayerBullet(x, y, a * 280, -520, 56, img);
-        });
-        break;
-      case 'heavy':
-        // building：大型・低速の1発。
-        this.pushPlayerBullet(x, y, 0, -380, 128, img);
-        break;
-      case 'bomb':
-        // nuclear：広範囲の大量弾。
-        for (let i = -4; i <= 4; i += 1) {
-          this.pushPlayerBullet(x, y, i * 70, -500, 72, img);
-        }
-        break;
-      default:
-        this.pushPlayerBullet(x, y, 0, -560, 56, img);
-    }
   }
 
   // 中心 (x, y) から四方八方へ弾を放つ（弾幕用の全方位バースト）。

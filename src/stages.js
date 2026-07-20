@@ -5,10 +5,11 @@
 //   stage: ステージ番号（数字）
 //   name:  ステージ名（文字列）
 //   image: 背景に使う画像ファイル名（res/img 内 / PNG）
+//   bgm:   ステージ中に流すBGMファイル名（res/snd 内 / OGG）
 const STAGES = [
-  { stage: 1, name: 'USA',    image: 'bg_street_usa.png' },
-  { stage: 2, name: 'RUSSIA',  image: 'bg_street_russia.png' },
-  { stage: 3, name: 'Space', image: 'bg_street_space.png' }
+  { stage: 1, name: 'USA',    image: 'bg_street_usa.png',    bgm: 'bgm_game2.ogg' },
+  { stage: 2, name: 'RUSSIA', image: 'bg_street_russia.png', bgm: 'bgm_game3.ogg' },
+  { stage: 3, name: 'Space',  image: 'bg_street_space.png',  bgm: 'bgm_space.ogg' }
 ];
 
 // ステージ番号からステージ定義を引くためのマップ。
